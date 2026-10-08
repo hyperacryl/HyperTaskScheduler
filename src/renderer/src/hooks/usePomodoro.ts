@@ -26,9 +26,14 @@ export const usePomodoro = (
     preNotified.current = false
   }
 
-  // 🐞 デバッグ用：残り時間を強制的に変更
+  // 🐞 デバッグ用：指定秒数へ変更
   const debugSetTimeLeft = (seconds: number) => {
-    setTimeLeft(seconds)
+    setTimeLeft(Math.max(1, seconds))
+  }
+
+  // 🐞 デバッグ用：時間の加減算（-10秒や+1分など）
+  const debugAddSeconds = (seconds: number) => {
+    setTimeLeft((prev) => Math.max(1, prev + seconds))
   }
 
   useEffect(() => {
@@ -37,8 +42,7 @@ export const usePomodoro = (
     const intervalId = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          // 自動で次のタイマーを進めたい場合は、下の行をコメントアウトしてください
-          setIsRunning(false) 
+          setIsRunning(false)
           
           const nextMode = mode === 'work' ? 'break' : 'work'
           if (mode === 'work') {
@@ -75,5 +79,5 @@ export const usePomodoro = (
   const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0')
   const seconds = (timeLeft % 60).toString().padStart(2, '0')
 
-  return { minutes, seconds, isRunning, mode, toggleTimer, resetTimer, switchMode, debugSetTimeLeft }
+  return { minutes, seconds, isRunning, mode, toggleTimer, resetTimer, switchMode, debugSetTimeLeft, debugAddSeconds }
 }
