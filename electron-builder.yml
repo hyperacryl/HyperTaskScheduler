@@ -1,7 +1,7 @@
 appId: com.electron.app
 productName: hyper-task-scheduler
 directories:
-  buildResources: build
+  output: "C:/HyperTaskBuild"
 files:
   - '!**/.vscode/*'
   - '!src/*'
