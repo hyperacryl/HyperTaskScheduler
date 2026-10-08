@@ -1,7 +1,7 @@
-import type { JSX } from 'react'
+import type { JSX, Dispatch, SetStateAction } from 'react'
 import { playNotification, TtsProvider } from '../services/audioService'
 import { Card, Text, Title, Button, Stack, PasswordInput, Select, Slider, NumberInput, TextInput, Divider } from '@mantine/core'
-import { AnnounceTemplates } from '../App'
+import type { AnnounceTemplates } from '../types'
 
 interface SettingsProps {
   apiKey: string
@@ -13,14 +13,14 @@ interface SettingsProps {
   preNotifyMinutes: number
   setPreNotifyMinutes: (val: number) => void
   templates: AnnounceTemplates
-  setTemplates: React.Dispatch<React.SetStateAction<AnnounceTemplates>>
+  setTemplates: Dispatch<SetStateAction<AnnounceTemplates>>
 }
 
 export function Settings({
   apiKey, setApiKey, ttsProvider, setTtsProvider, volume, setVolume, preNotifyMinutes, setPreNotifyMinutes, templates, setTemplates
 }: SettingsProps): JSX.Element {
 
-  const handleTestAudio = () => {
+  const handleTestAudio = (): void => {
     let testMsg = 'これは音声通知のテストです。タスクの時間が迫っています。'
     if (ttsProvider === 'voicevox_3') testMsg = 'これは音声通知のテストなのだ。タスクの時間が迫っているのだ。'
     else if (ttsProvider === 'voicevox_2') testMsg = 'これは音声通知のテストよ。タスクの時間が迫っているわ。'

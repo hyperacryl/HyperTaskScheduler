@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, type JSX } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import type { JSX, KeyboardEvent } from 'react'
 import { Card, Text, Title, Button, Textarea, Checkbox, Flex, Stack, Badge, Group, Alert, TextInput } from '@mantine/core'
 import { generateSchedule } from '../services/aiService'
 import { useScheduleMonitor } from '../hooks/useScheduleMonitor'
-import { Task } from '../types'
+import { Task, type AnnounceTemplates } from '../types'
 import { TtsProvider } from '../services/audioService'
-import { AnnounceTemplates } from '../App'
 
 interface SchedulerProps {
   apiKey: string
@@ -14,7 +14,13 @@ interface SchedulerProps {
   templates: AnnounceTemplates
 }
 
-export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templates }: SchedulerProps): JSX.Element {
+export function Scheduler({
+  apiKey,
+  ttsProvider,
+  volume,
+  preNotifyMinutes,
+  templates
+}: SchedulerProps): JSX.Element {
   const [taskInput, setTaskInput] = useState<string>('')
   const [errorMessage, setErrorMessage] = useState<string>('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -29,15 +35,15 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
   const [tasks, setTasks] = useState<Task[]>([])
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
 
-  useEffect((): (() => void) => {
-    const intervalId = setInterval((): void => {
+  useEffect(() => {
+    const intervalId = setInterval(() => {
       const virtualNow = new Date(Date.now() + timeOffset)
       const h = virtualNow.getHours().toString().padStart(2, '0')
       const m = virtualNow.getMinutes().toString().padStart(2, '0')
       const s = virtualNow.getSeconds().toString().padStart(2, '0')
       setVirtualTimeStr(`${h}:${m}:${s}`)
     }, 1000)
-    return (): void => clearInterval(intervalId)
+    return () => clearInterval(intervalId)
   }, [timeOffset])
 
   useScheduleMonitor(tasks, ttsProvider, volume, preNotifyMinutes, timeOffset, templates)
@@ -67,11 +73,11 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
       setErrorMessage(error instanceof Error ? error.message : 'エラーが発生しました。')
     } finally {
       setIsGenerating(false)
-      setTimeout((): void => textareaRef.current?.focus(), 50)
+      setTimeout(() => textareaRef.current?.focus(), 50)
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
       void handleGenerate()
@@ -88,7 +94,6 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif' 
       }}
     >
-      {/* 左ペイン: 操作パネル (固定幅 380px) */}
       <div style={{ width: '380px', flexShrink: 0 }}>
         <Stack gap="sm">
           <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
@@ -99,7 +104,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
                 <TextInput 
                   type="time" 
                   value={baseTime} 
-                  onChange={(e): void => setBaseTime(e.target.value)} 
+                  onChange={(e) => setBaseTime(e.target.value)} 
                   radius="md"
                   size="xs"
                   w={90}
@@ -133,7 +138,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
               <Textarea
                 ref={textareaRef}
                 value={taskInput}
-                onChange={(e): void => { 
+                onChange={(e) => { 
                   setTaskInput(e.target.value)
                   if (errorMessage) setErrorMessage('') 
                 }}
@@ -152,7 +157,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
               <Button 
                 size="xs"
                 radius="xl"
-                onClick={(): void => { void handleGenerate() }} 
+                onClick={() => { void handleGenerate() }} 
                 loading={isGenerating}
                 w="100%"
                 tabIndex={4}
@@ -180,7 +185,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
                   size="xs" 
                   radius="xl" 
                   tabIndex={-1}
-                  onClick={(): void => addOffsetSeconds(sec)}
+                  onClick={() => addOffsetSeconds(sec)}
                   styles={{
                     root: {
                       backgroundColor: '#21253a',
@@ -214,7 +219,6 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
         </Stack>
       </div>
 
-      {/* 右ペイン: タイムスケジュール（リアルタイム追従 & 独立スクロール） */}
       <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Card 
           padding="20px" 
@@ -248,7 +252,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
                       <Checkbox 
                         size="sm" 
                         checked={task.completed} 
-                        onChange={(): void => setTasks(tasks.map((t) => t.id === task.id ? { ...t, completed: !t.completed } : t))} 
+                        onChange={() => setTasks(tasks.map((t) => t.id === task.id ? { ...t, completed: !t.completed } : t))} 
                         color="indigo" 
                       />
                       <Badge color="indigo" variant="light" size="md" radius="sm">{task.startTime} - {task.endTime}</Badge>

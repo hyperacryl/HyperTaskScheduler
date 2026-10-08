@@ -2,7 +2,7 @@ import type { JSX } from 'react'
 import { usePomodoro } from '../hooks/usePomodoro'
 import { TtsProvider } from '../services/audioService'
 import { Card, Text, Title, Button, Group, Flex, SegmentedControl, RingProgress, Center } from '@mantine/core'
-import { AnnounceTemplates } from '../App'
+import type { AnnounceTemplates } from '../types'
 
 interface PomodoroProps {
   ttsProvider: TtsProvider

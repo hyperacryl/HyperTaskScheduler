@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Task } from '../types'
 import { playNotification, TtsProvider } from '../services/audioService'
-import { AnnounceTemplates } from '../App'
+import type { AnnounceTemplates } from '../types'
 
 export function useScheduleMonitor(
   tasks: Task[],
@@ -20,7 +20,7 @@ export function useScheduleMonitor(
       tasks.forEach((task) => {
         if (task.completed || !task.startTime || !task.endTime) return
 
-        const parseTime = (timeStr: string) => {
+        const parseTime = (timeStr: string): number => {
           const [h, m] = timeStr.split(':').map(Number)
           const d = new Date()
           d.setHours(h, m, 0, 0)

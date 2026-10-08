@@ -9,7 +9,6 @@
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
       "@renderer/*": [
