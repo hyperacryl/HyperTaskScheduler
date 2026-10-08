@@ -54,21 +54,28 @@ export function App(): JSX.Element {
     return saved ? JSON.parse(saved) : defaultTemplates
   })
 
-  useEffect(() => { localStorage.setItem('ht_api_key', apiKey) }, [apiKey])
-  useEffect(() => { localStorage.setItem('ht_tts_provider', ttsProvider) }, [ttsProvider])
-  useEffect(() => { localStorage.setItem('ht_volume', volume.toString()) }, [volume])
-  useEffect(() => { localStorage.setItem('ht_prenotify', preNotifyMinutes.toString()) }, [preNotifyMinutes])
-  useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
+  useEffect((): void => { localStorage.setItem('ht_api_key', apiKey) }, [apiKey])
+  useEffect((): void => { localStorage.setItem('ht_tts_provider', ttsProvider) }, [ttsProvider])
+  useEffect((): void => { localStorage.setItem('ht_volume', volume.toString()) }, [volume])
+  useEffect((): void => { localStorage.setItem('ht_prenotify', preNotifyMinutes.toString()) }, [preNotifyMinutes])
+  useEffect((): void => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
 
   return (
     <MantineProvider theme={customTheme} forceColorScheme="dark">
-      <AppShell header={{ height: 68 }} padding="lg" styles={{ main: { backgroundColor: '#0f111a', height: 'calc(100vh - 68px)', overflow: 'hidden' } }}>
+      <AppShell 
+        header={{ height: 68 }} 
+        padding="0"
+        styles={{
+          root: { height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }
+        }}
+      >
         <AppShell.Header 
           p="md" 
           styles={{ 
             header: { 
               backgroundColor: '#151828', 
-              borderBottom: '1px solid rgba(255, 255, 255, 0.06)'
+              borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+              position: 'relative'
             } 
           }}
         >
@@ -85,7 +92,7 @@ export function App(): JSX.Element {
             <Group gap="xs" style={{ backgroundColor: '#0f111a', padding: '4px', borderRadius: '30px', border: '1px solid rgba(255,255,255,0.05)' }}>
               <Button 
                 radius="xl" size="sm"
-                onClick={() => setActiveTab('scheduler')}
+                onClick={(): void => setActiveTab('scheduler')}
                 styles={{
                   root: {
                     background: activeTab === 'scheduler' ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'transparent',
@@ -100,7 +107,7 @@ export function App(): JSX.Element {
               </Button>
               <Button 
                 radius="xl" size="sm"
-                onClick={() => setActiveTab('pomodoro')}
+                onClick={(): void => setActiveTab('pomodoro')}
                 styles={{
                   root: {
                     background: activeTab === 'pomodoro' ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'transparent',
@@ -115,7 +122,7 @@ export function App(): JSX.Element {
               </Button>
               <Button 
                 radius="xl" size="sm"
-                onClick={() => setActiveTab('settings')}
+                onClick={(): void => setActiveTab('settings')}
                 styles={{
                   root: {
                     background: activeTab === 'settings' ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : 'transparent',
@@ -132,9 +139,20 @@ export function App(): JSX.Element {
           </Flex>
         </AppShell.Header>
 
-        <AppShell.Main style={{ backgroundColor: '#0f111a', height: 'calc(100vh - 68px)', overflow: 'hidden' }}>
-          <div style={{ maxWidth: 1200, margin: '0 auto', height: '100%', paddingTop: 8 }}>
-            <div style={{ display: activeTab === 'scheduler' ? 'block' : 'none', height: '100%' }}>
+        <AppShell.Main 
+          style={{ 
+            backgroundColor: '#0f111a', 
+            flex: 1,
+            minHeight: 0,
+            padding: '16px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}
+        >
+          <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: activeTab === 'scheduler' ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
               <Scheduler apiKey={apiKey} ttsProvider={ttsProvider} volume={volume} preNotifyMinutes={preNotifyMinutes} templates={templates} />
             </div>
             

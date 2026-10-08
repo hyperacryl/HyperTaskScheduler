@@ -1,6 +1,3 @@
-/* Google Fonts から最高品質の幾何学フォントを読み込み */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800;900&display=swap');
-
 :root {
   /* Dribbble/Stake風の高級ネイビーパレット */
   --bg-main: #0a0c16;
@@ -29,16 +26,15 @@ body, html {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dribbble風 重厚立体カード */
+/* Dribbble風 重厚立体カード (レイアウト遅延を防ぐため transition を完全削除) */
 .dribbble-card {
   background-color: var(--bg-card) !important;
   border-radius: var(--radius-card) !important;
   border: var(--border-light) !important;
   box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6) !important;
-  transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
-/* ぽってりとしたメインボタン */
+/* メインボタン */
 .dribbble-btn-primary {
   background: var(--accent-purple-gradient) !important;
   color: #ffffff !important;
@@ -46,11 +42,9 @@ body, html {
   border-radius: var(--radius-btn) !important;
   font-weight: 800 !important;
   box-shadow: var(--accent-glow) !important;
-  transition: all 0.2s ease !important;
 }
 
 .dribbble-btn-primary:hover {
-  transform: translateY(-2px);
   box-shadow: 0 12px 30px rgba(99, 102, 241, 0.5) !important;
 }
 
@@ -80,10 +74,10 @@ body, html {
   border: var(--border-accent) !important;
 }
 
-/* タイマーの巨大かつ洗練された数字 */
+/* タイマーの数字 */
 .timer-number {
   font-family: 'Plus Jakarta Sans', sans-serif !important;
   font-weight: 900 !important;
   letter-spacing: -0.04em !important;
-  font-feature-settings: "tnum" on; /* 数字の横幅を揃える */
+  font-feature-settings: "tnum" on;
 }

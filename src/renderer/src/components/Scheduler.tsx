@@ -82,7 +82,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
     <Flex 
       gap="md" 
       style={{ 
-        height: 'calc(100vh - 96px)', 
+        flex: 1,
         width: '100%', 
         minHeight: 0,
         fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif' 
@@ -91,7 +91,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
       {/* 左ペイン: 操作パネル (固定幅 380px) */}
       <div style={{ width: '380px', flexShrink: 0 }}>
         <Stack gap="sm">
-          <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)' } }}>
+          <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
             <Flex justify="space-between" align="center" mb="2px">
               <Text size="xs" style={{ color: '#71788e' }} fw={800} tt="uppercase">APP CLOCK</Text>
               <Group gap="xs" align="center">
@@ -126,7 +126,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
             </Text>
           </Card>
 
-          <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)' } }}>
+          <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
             <Text size="xs" style={{ color: '#71788e' }} fw={800} tt="uppercase" mb="xs">GENERATOR</Text>
             <Title order={5} mb="xs" c="white" fw={800}>タスク生成</Title>
             <Stack gap="xs">
@@ -171,7 +171,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
             </Stack>
           </Card>
 
-          <Card padding="sm" styles={{ root: { backgroundColor: '#0f111a', borderRadius: '16px', border: '1px dashed rgba(255, 255, 255, 0.08)' } }}>
+          <Card padding="sm" styles={{ root: { backgroundColor: '#0f111a', borderRadius: '16px', border: '1px dashed rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
             <Text size="xs" style={{ color: '#71788e' }} fw={700} mb="xs">🐞 デバッグ微調整</Text>
             <Group mb="xs" gap="xs">
               {[-10, 10, 60, -60, 300].map((sec) => (
@@ -214,8 +214,8 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
         </Stack>
       </div>
 
-      {/* 右ペイン: タイムスケジュール（独立スクロール領域） */}
-      <div style={{ flex: 1, height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* 右ペイン: タイムスケジュール（リアルタイム追従 & 独立スクロール） */}
+      <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Card 
           padding="20px" 
           styles={{ 
@@ -227,7 +227,8 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
               minHeight: 0,
               display: 'flex',
               flexDirection: 'column',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              transition: 'none'
             } 
           }}
         >
@@ -242,7 +243,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
             ) : (
               <Stack gap="xs">
                 {tasks.map((task) => (
-                  <Card key={task.id} p="sm" radius="md" styles={{ root: { backgroundColor: '#21253a', border: '1px solid rgba(255,255,255,0.05)', opacity: task.completed ? 0.4 : 1 } }}>
+                  <Card key={task.id} p="sm" radius="md" styles={{ root: { backgroundColor: '#21253a', border: '1px solid rgba(255,255,255,0.05)', opacity: task.completed ? 0.4 : 1, transition: 'none' } }}>
                     <Flex align="center" gap="sm">
                       <Checkbox 
                         size="sm" 
