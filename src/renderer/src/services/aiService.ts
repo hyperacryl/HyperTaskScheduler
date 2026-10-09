@@ -11,7 +11,7 @@ const addMinutesToTime = (timeStr: string, minutesToAdd: number): string => {
 }
 
 /**
- * Gemini API を呼び出して入力プロンプトからタスクスケジュールを自動生成
+ * OpenAI API (GPT) を呼び出して入力プロンプトからタスクスケジュールを自動生成
  */
 export async function generateSchedule(
   prompt: string,
@@ -22,58 +22,63 @@ export async function generateSchedule(
     throw new Error('プロンプトが空です。')
   }
   if (!apiKey.trim()) {
-    throw new Error('Gemini APIキーが設定されていません。設定画面で入力してください。')
+    throw new Error('OpenAI APIキーが設定されていません。設定画面で入力してください。')
   }
 
   const systemInstruction = `あなたは優秀なタスク自動スケジューラーです。
 ユーザーの入力テキストから具体的なタスク項目と予測所要時間を抽出し、指定された基準開始時刻（${baseTime}）から連続するタイムスケジュールを作成してください。
-出力は必ず以下のJSON配列形式のみで返してください。Markdownの装飾や余計な解説文は一切含めないでください。
+出力は必ず {"tasks": [...] } というJSONオブジェクト形式で返し、配列要素は以下の構造にしてください。
 
 [
   {
     "title": "タスク名",
     "estimatedMinutes": 30,
     "startTime": "HH:MM",
-    "endTime": "HH:MM"
+    "endTime": "HH:MM",
+    "isBreak": false
   }
 ]`
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: `${systemInstruction}\n\nユーザー指示: ${prompt}` }]
-          }
-        ]
-      })
-    }
-  )
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey.trim()}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7
+    })
+  })
 
   if (!response.ok) {
-    throw new Error(`Gemini API エラー: ${response.statusText} (${response.status})`)
+    const errorData = await response.json().catch(() => ({}))
+    const msg = errorData?.error?.message || response.statusText
+    throw new Error(`OpenAI API エラー: ${msg} (${response.status})`)
   }
 
   const data = await response.json()
-  const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  const cleanedJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim()
+  const content = data.choices?.[0]?.message?.content || ''
 
-  let generatedList: any[]
+  let parsed: any
   try {
-    generatedList = JSON.parse(cleanedJson)
+    parsed = JSON.parse(content)
   } catch {
     throw new Error('AIからの応答をJSON形式に解析できませんでした。')
   }
 
-  if (!Array.isArray(generatedList)) {
-    throw new Error('AIからの応答が配列形式ではありません。')
+  const rawList = Array.isArray(parsed) ? parsed : parsed.tasks || parsed.schedule || []
+  if (!Array.isArray(rawList)) {
+    throw new Error('AIからの応答にタスク配列が含まれていません。')
   }
 
   let currentStartTime = baseTime
-  const tasks: Task[] = generatedList.map((item, index) => {
+  const tasks: Task[] = rawList.map((item: any, index: number) => {
     const duration = typeof item.estimatedMinutes === 'number' && item.estimatedMinutes > 0 ? item.estimatedMinutes : 30
     const startTime = item.startTime || currentStartTime
     const endTime = item.endTime || addMinutesToTime(startTime, duration)
@@ -85,7 +90,8 @@ export async function generateSchedule(
       startTime,
       endTime,
       estimatedMinutes: duration,
-      completed: false
+      completed: false,
+      isBreak: Boolean(item.isBreak)
     }
   })
 

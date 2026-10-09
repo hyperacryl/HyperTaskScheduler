@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { Task } from '../types'
+import { Task, AnnounceTemplates } from '../types'
 import { playNotification, TtsProvider } from '../services/audioService'
-import type { AnnounceTemplates } from '../types'
 
 export function useScheduleMonitor(
   tasks: Task[],
@@ -31,39 +30,47 @@ export function useScheduleMonitor(
         let endMs = parseTime(task.endTime)
         if (endMs < startMs) endMs += 24 * 60 * 60 * 1000
 
-        // 開始予定時刻の5秒前トリガー
+        const isBreak = Boolean(task.isBreak) || task.title.includes('休憩') || task.title.toLowerCase().includes('break')
+
+        // 1. 開始予定時刻の5秒前トリガー
         const startTriggerKey = `${task.id}-start`
         if (virtualNowMs >= startMs - 5000 && virtualNowMs < startMs + 10000) {
           if (!triggeredEventsRef.current.has(startTriggerKey)) {
             triggeredEventsRef.current.add(startTriggerKey)
-            const text = (templates.taskStart || '{title}の時間です。').replace('{title}', task.title)
-            playNotification(text, ttsProvider, volume / 100, 0)
+            const templateText = isBreak 
+              ? (templates.breakStart || '休憩時間です！') 
+              : (templates.taskStart || '{title}の時間です。始めましょう。')
+            const text = templateText.replace('{title}', task.title)
+            playNotification(text, ttsProvider, volume)
           }
         }
 
-        // 事前通知（終了のpreNotifyMinutes分前の、さらに5秒前）トリガー
-        const isBreak = task.title.includes('休憩') || task.title.toLowerCase().includes('break')
+        // 2. 事前通知（終了のpreNotifyMinutes分前の、さらに5秒前）トリガー
         if (!isBreak && preNotifyMinutes > 0 && task.estimatedMinutes > preNotifyMinutes) {
           const preNotifyMs = endMs - preNotifyMinutes * 60 * 1000
           const preNotifyTriggerKey = `${task.id}-prenotify`
           if (virtualNowMs >= preNotifyMs - 5000 && virtualNowMs < preNotifyMs + 10000) {
             if (!triggeredEventsRef.current.has(preNotifyTriggerKey)) {
               triggeredEventsRef.current.add(preNotifyTriggerKey)
-              const text = (templates.taskPreNotify || 'まもなく{title}が終了します。').replace('{title}', task.title)
-              playNotification(text, ttsProvider, volume / 100, 0)
+              const templateText = templates.taskPreEnd || 'まもなく {title} が終了します。'
+              const text = templateText
+                .replace('{title}', task.title)
+                .replace('{minutes}', preNotifyMinutes.toString())
+              playNotification(text, ttsProvider, volume)
             }
           }
         }
 
-        // 終了予定時刻の5秒前トリガー
+        // 3. 終了予定時刻の5秒前トリガー
         const endTriggerKey = `${task.id}-end`
         if (virtualNowMs >= endMs - 5000 && virtualNowMs < endMs + 10000) {
           if (!triggeredEventsRef.current.has(endTriggerKey)) {
             triggeredEventsRef.current.add(endTriggerKey)
-            const text = isBreak
-              ? (templates.pomodoroBreakEnd || '休憩時間が終了しました。次の作業を始めましょう。')
-              : (templates.taskEnd || '{title}の時間になりました。').replace('{title}', task.title)
-            playNotification(text, ttsProvider, volume / 100, 0)
+            const templateText = isBreak
+              ? (templates.breakPreEnd || 'まもなく休憩が終了します。次の準備を始めましょう！')
+              : (templates.taskEnd || '{title}の時間になりました。次のタスクへ移りましょう。')
+            const text = templateText.replace('{title}', task.title)
+            playNotification(text, ttsProvider, volume)
           }
         }
       })

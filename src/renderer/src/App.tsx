@@ -12,11 +12,11 @@ import { Task, AnnounceTemplates } from './types'
 
 const defaultTemplates: AnnounceTemplates = {
   taskStart: '{title} の時間です。始めましょう。',
-  taskPreNotify: 'まもなく {title} が終了します。',
+  taskPreEnd: 'まもなく {title} が終了します。',
   taskEnd: '{title} の時間になりました。次のタスクへ移りましょう。',
-  pomodoroWorkStart: '作業時間を開始します。集中していきましょう。',
-  pomodoroBreakStart: '休憩時間です。少し体を休めましょう。',
-  pomodoroBreakEnd: '休憩時間が終了しました。次の作業を始めましょう。'
+  breakStart: '休憩時間です！しっかり休んでリフレッシュしましょう。',
+  breakPreEnd: 'まもなく休憩が終了します。次の準備を始めましょう！',
+  allCompleted: 'すべてのタスクが片付きました。お疲れ様でした！'
 }
 
 const customTheme = createTheme({
@@ -35,8 +35,7 @@ export function App() {
   
   const [ttsProvider, setTtsProvider] = useState<TtsProvider>(() => {
     const saved = localStorage.getItem('ht_tts_provider') as TtsProvider
-    const validProviders: TtsProvider[] = ['webSpeech', 'googleCloud', 'voicevox_3', 'voicevox_2', 'voicevox_8', 'voicevox_14']
-    return validProviders.includes(saved) ? saved : 'googleCloud'
+    return saved || 'voicevox_3'
   })
 
   const [googleVoiceName, setGoogleVoiceName] = useState<string>(() => {
@@ -53,13 +52,36 @@ export function App() {
     const saved = localStorage.getItem('ht_volume')
     return saved ? parseInt(saved, 10) : 50
   })
+
   const [preNotifyMinutes, setPreNotifyMinutes] = useState<number>(() => {
     const saved = localStorage.getItem('ht_prenotify')
     return saved ? parseInt(saved, 10) : 5
   })
+
+  const [autoBreakEnabled, setAutoBreakEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ht_auto_break_enabled')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  const [breakMinutes, setBreakMinutes] = useState<number>(() => {
+    const saved = localStorage.getItem('ht_break_minutes')
+    return saved ? parseInt(saved, 10) : 5
+  })
+
+  const [preBreakNotifyMinutes, setPreBreakNotifyMinutes] = useState<number>(() => {
+    const saved = localStorage.getItem('ht_pre_break_notify_minutes')
+    return saved ? parseInt(saved, 10) : 1
+  })
+
   const [templates, setTemplates] = useState<AnnounceTemplates>(() => {
     const saved = localStorage.getItem('ht_announce_templates')
-    return saved ? JSON.parse(saved) : defaultTemplates
+    if (!saved) return defaultTemplates
+    try {
+      const parsed = JSON.parse(saved)
+      return { ...defaultTemplates, ...parsed }
+    } catch {
+      return defaultTemplates
+    }
   })
 
   const [tasks, setTasks] = useState<Task[]>([])
@@ -92,6 +114,9 @@ export function App() {
   }, [volume])
 
   useEffect(() => { localStorage.setItem('ht_prenotify', preNotifyMinutes.toString()) }, [preNotifyMinutes])
+  useEffect(() => { localStorage.setItem('ht_auto_break_enabled', autoBreakEnabled.toString()) }, [autoBreakEnabled])
+  useEffect(() => { localStorage.setItem('ht_break_minutes', breakMinutes.toString()) }, [breakMinutes])
+  useEffect(() => { localStorage.setItem('ht_pre_break_notify_minutes', preBreakNotifyMinutes.toString()) }, [preBreakNotifyMinutes])
   useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
 
   const currentTaskTitle = (() => {
@@ -200,6 +225,9 @@ export function App() {
                   ttsProvider={ttsProvider} setTtsProvider={setTtsProvider}
                   volume={volume} setVolume={setVolume}
                   preNotifyMinutes={preNotifyMinutes} setPreNotifyMinutes={setPreNotifyMinutes}
+                  autoBreakEnabled={autoBreakEnabled} setAutoBreakEnabled={setAutoBreakEnabled}
+                  breakMinutes={breakMinutes} setBreakMinutes={setBreakMinutes}
+                  preBreakNotifyMinutes={preBreakNotifyMinutes} setPreBreakNotifyMinutes={setPreBreakNotifyMinutes}
                   templates={templates} setTemplates={setTemplates}
                 />
               </div>

@@ -46,9 +46,9 @@ export const usePomodoro = (
           
           const nextMode = mode === 'work' ? 'break' : 'work'
           if (mode === 'work') {
-            playNotification('作業時間が終了しました。5分間の休憩に入ってください。', ttsProvider, volume / 100, 0)
+            playNotification('作業時間が終了しました。5分間の休憩に入ってください。', ttsProvider, volume)
           } else {
-            playNotification('休憩が終了しました。作業を再開しましょう。', ttsProvider, volume / 100, 0)
+            playNotification('休憩が終了しました。作業を再開しましょう。', ttsProvider, volume)
           }
           
           setMode(nextMode)
@@ -65,7 +65,7 @@ export const usePomodoro = (
           preNotified.current = true
           playNotification(
             `作業終了の${preNotifyMinutes}分前です。キリのいいところで終わらせる準備をしましょう。`,
-            ttsProvider, volume / 100, 0
+            ttsProvider, volume
           )
         }
 
