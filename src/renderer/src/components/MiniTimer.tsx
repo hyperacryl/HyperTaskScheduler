@@ -1,7 +1,9 @@
-import { useState } from 'react'
 import { Card, Text, Button, Group, Flex, ActionIcon, SegmentedControl } from '@mantine/core'
 
 interface MiniTimerProps {
+  activeTab: 'scheduler' | 'pomodoro'
+  onChangeTab: (tab: 'scheduler' | 'pomodoro') => void
+
   pomodoroTitle: string
   pomodoroTimeString: string
   isPomodoroRunning: boolean
@@ -16,6 +18,8 @@ interface MiniTimerProps {
 }
 
 export function MiniTimer({
+  activeTab,
+  onChangeTab,
   pomodoroTitle,
   pomodoroTimeString,
   isPomodoroRunning,
@@ -26,10 +30,8 @@ export function MiniTimer({
   onToggleAlwaysOnTop,
   onRestoreNormalMode
 }: MiniTimerProps) {
-  const [tab, setTab] = useState<'pomodoro' | 'schedule'>('pomodoro')
-
-  const timeDisplay = tab === 'pomodoro' ? pomodoroTimeString : (virtualTimeStr || '--:--:--')
-  const titleDisplay = tab === 'pomodoro' ? pomodoroTitle : (currentTaskTitle || '仮想アプリ時刻')
+  const timeDisplay = activeTab === 'pomodoro' ? pomodoroTimeString : (virtualTimeStr || '--:--:--')
+  const titleDisplay = activeTab === 'pomodoro' ? pomodoroTitle : (currentTaskTitle || '進行中のタスクなし')
 
   return (
     <Card
@@ -52,11 +54,11 @@ export function MiniTimer({
         <SegmentedControl
           size="xs"
           radius="xl"
-          value={tab}
-          onChange={(val) => setTab(val as 'pomodoro' | 'schedule')}
+          value={activeTab}
+          onChange={(val) => onChangeTab(val as 'scheduler' | 'pomodoro')}
           data={[
-            { label: 'ポモドーロ', value: 'pomodoro' },
-            { label: 'スケジューラ', value: 'schedule' }
+            { label: 'スケジューラ', value: 'scheduler' },
+            { label: 'ポモドーロ', value: 'pomodoro' }
           ]}
           styles={{
             root: { backgroundColor: '#0f111a', border: '1px solid rgba(255,255,255,0.06)', padding: '2px' },
@@ -146,7 +148,7 @@ export function MiniTimer({
       </Flex>
 
       <div>
-        {tab === 'pomodoro' ? (
+        {activeTab === 'pomodoro' ? (
           <Button
             size="xs"
             radius="xl"

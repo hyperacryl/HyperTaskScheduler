@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import type { JSX, KeyboardEvent } from 'react'
 import { Card, Text, Title, Button, Textarea, Checkbox, Flex, Stack, Badge, Group, Alert, TextInput } from '@mantine/core'
 import { generateSchedule } from '../services/aiService'
 import { useScheduleMonitor } from '../hooks/useScheduleMonitor'
-import { Task, type AnnounceTemplates } from '../types'
+import { Task, AnnounceTemplates } from '../types'
 import { TtsProvider } from '../services/audioService'
 
 interface SchedulerProps {
@@ -12,15 +11,11 @@ interface SchedulerProps {
   volume: number
   preNotifyMinutes: number
   templates: AnnounceTemplates
+  tasks: Task[]
+  setTasks: React.Dispatch<React.SetStateAction<Task[]>>
 }
 
-export function Scheduler({
-  apiKey,
-  ttsProvider,
-  volume,
-  preNotifyMinutes,
-  templates
-}: SchedulerProps): JSX.Element {
+export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templates, tasks, setTasks }: SchedulerProps) {
   const [taskInput, setTaskInput] = useState<string>('')
   const [errorMessage, setErrorMessage] = useState<string>('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -32,7 +27,6 @@ export function Scheduler({
     const now = new Date()
     return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
   })
-  const [tasks, setTasks] = useState<Task[]>([])
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
 
   useEffect(() => {
@@ -77,7 +71,7 @@ export function Scheduler({
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
       void handleGenerate()

@@ -1,11 +1,16 @@
-import type { JSX, Dispatch, SetStateAction } from 'react'
+import { Stack, Card, Text, Title, TextInput, Select, Slider, Button, NumberInput, Divider } from '@mantine/core'
 import { playNotification, TtsProvider } from '../services/audioService'
-import { Card, Text, Title, Button, Stack, PasswordInput, Select, Slider, NumberInput, TextInput, Divider } from '@mantine/core'
-import type { AnnounceTemplates } from '../types'
+import { AnnounceTemplates } from '../types'
 
 interface SettingsProps {
   apiKey: string
   setApiKey: (val: string) => void
+  googleTtsApiKey: string
+  setGoogleTtsApiKey: (val: string) => void
+  googleVoiceName: string
+  setGoogleVoiceName: (val: string) => void
+  googlePitch: number
+  setGooglePitch: (val: number) => void
   ttsProvider: TtsProvider
   setTtsProvider: (val: TtsProvider) => void
   volume: number
@@ -13,137 +18,127 @@ interface SettingsProps {
   preNotifyMinutes: number
   setPreNotifyMinutes: (val: number) => void
   templates: AnnounceTemplates
-  setTemplates: Dispatch<SetStateAction<AnnounceTemplates>>
+  setTemplates: (val: AnnounceTemplates) => void
 }
 
 export function Settings({
-  apiKey, setApiKey, ttsProvider, setTtsProvider, volume, setVolume, preNotifyMinutes, setPreNotifyMinutes, templates, setTemplates
-}: SettingsProps): JSX.Element {
+  apiKey, setApiKey,
+  googleTtsApiKey, setGoogleTtsApiKey,
+  googleVoiceName, setGoogleVoiceName,
+  googlePitch, setGooglePitch,
+  ttsProvider, setTtsProvider,
+  volume, setVolume,
+  preNotifyMinutes, setPreNotifyMinutes
+}: SettingsProps) {
 
-  const handleTestAudio = (): void => {
-    let testMsg = 'これは音声通知のテストです。タスクの時間が迫っています。'
-    if (ttsProvider === 'voicevox_3') testMsg = 'これは音声通知のテストなのだ。タスクの時間が迫っているのだ。'
-    else if (ttsProvider === 'voicevox_2') testMsg = 'これは音声通知のテストよ。タスクの時間が迫っているわ。'
-    else if (ttsProvider === 'voicevox_8') testMsg = 'これは音声通知のテストだよ。タスクの時間が迫ってるよ。'
-    
-    playNotification(testMsg, ttsProvider, volume / 100, 0)
+  const handleTestPlay = () => {
+    playNotification(
+      'これはテスト再生です。音量と声質を確認してください。', 
+      ttsProvider, 
+      volume, 
+      0, 
+      googleVoiceName, 
+      googlePitch
+    )
   }
 
   return (
-    <Card padding="28px" maw={680} mx="auto" mb="xl" styles={{ root: { backgroundColor: '#151828', borderRadius: '24px', border: '1px solid rgba(255, 255, 255, 0.08)', boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)' } }}>
-      <Text size="xs" style={{ color: '#71788e' }} fw={700} tt="uppercase" lts="0.08em" mb="xs">PREFERENCES</Text>
-      <Title order={3} mb="xl" c="white" fw={800}>設定</Title>
-
+    <Card padding="xl" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)' } }}>
+      <Title order={4} c="white" mb="md" fw={800}>設定</Title>
       <Stack gap="lg">
-        <PasswordInput
-          label="OpenAI API Key"
-          description="AIタスク自動編成用"
-          placeholder="sk-..."
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          radius="md"
-          size="md"
-          styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-        />
-
-        <Select
-          label="音声通知キャラクター"
-          description="選択すると自動保存されます"
-          value={ttsProvider}
-          onChange={(val) => setTtsProvider((val as TtsProvider) || 'voicevox_3')}
-          radius="md"
-          size="md"
-          styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-          data={[
-            { value: 'voicevox_3', label: 'ずんだもん (VOICEVOX)' },
-            { value: 'voicevox_2', label: '四国めたん (VOICEVOX)' },
-            { value: 'voicevox_8', label: '春日部つむぎ (VOICEVOX)' },
-            { value: 'voicevox_14', label: '冥鳴ひまり (VOICEVOX)' },
-            { value: 'webSpeech', label: 'OS標準 (Web Speech API)' },
-          ]}
-        />
-
+        
         <div>
-          <Text size="sm" fw={700} mb={6} c="white">通知音量: {volume}%</Text>
-          <Slider 
-            value={volume} 
-            onChange={setVolume} 
-            color="indigo"
-            size="md"
-            radius="xl"
-            marks={[ { value: 0, label: '0%' }, { value: 50, label: '50%' }, { value: 100, label: '100%' } ]}
-            mb="xl"
+          <Text size="sm" fw={700} c="#c1c7d8" mb="xs">AI自動生成用 (Gemini API Key)</Text>
+          <TextInput 
+            value={apiKey} 
+            onChange={(e) => setApiKey(e.target.value)} 
+            placeholder="AIzaSy..."
+            styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
           />
         </div>
 
-        <NumberInput
-          label="終了の事前通知 (分前)"
-          description="0に設定するとオフになります"
-          min={0}
-          max={60}
-          value={preNotifyMinutes}
-          onChange={(val) => setPreNotifyMinutes(Number(val))}
-          radius="md"
-          size="md"
-          styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-        />
+        <div>
+          <Text size="sm" fw={700} c="#c1c7d8" mb="xs">音声通知用 (Google Cloud TTS API Key)</Text>
+          <TextInput 
+            value={googleTtsApiKey} 
+            onChange={(e) => setGoogleTtsApiKey(e.target.value)} 
+            placeholder="AIzaSy..."
+            styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+          />
+        </div>
 
-        <Button 
-          variant="filled" 
-          onClick={handleTestAudio} 
-          w="fit-content" 
-          radius="xl"
-          size="sm"
-          styles={{ 
-            root: { backgroundColor: '#21253a', border: '1px solid rgba(255, 255, 255, 0.08)' },
-            label: { color: '#a855f7', fontWeight: 700 }
-          }}
-        >
-          🔊 音声通知をテストする
-        </Button>
-
-        <Divider my="sm" color="rgba(255,255,255,0.08)" />
+        <Divider color="rgba(255,255,255,0.08)" />
 
         <div>
-          <Title order={4} mb="xs" c="white" fw={800}>🗣️ アナウンスのセリフカスタマイズ</Title>
-          <Text size="xs" style={{ color: '#71788e' }} mb="md">
-            `{"{title}"}` と入力した部分が実際のタスク名に置換されます。
-          </Text>
-
-          <Stack gap="md">
-            <TextInput
-              label="タスク開始時"
-              value={templates.taskStart}
-              onChange={(e) => setTemplates({ ...templates, taskStart: e.target.value })}
-              radius="md"
-              styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-            />
-            <TextInput
-              label="タスク終了の事前通知"
-              value={templates.taskPreNotify}
-              onChange={(e) => setTemplates({ ...templates, taskPreNotify: e.target.value })}
-              radius="md"
-              styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-            />
-            <TextInput
-              label="タスク終了時"
-              value={templates.taskEnd}
-              onChange={(e) => setTemplates({ ...templates, taskEnd: e.target.value })}
-              radius="md"
-              styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-            />
-            <TextInput
-              label="ポモドーロ 休憩終了時"
-              value={templates.pomodoroBreakEnd}
-              onChange={(e) => setTemplates({ ...templates, pomodoroBreakEnd: e.target.value })}
-              radius="md"
-              styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-            />
-          </Stack>
+          <Text size="sm" fw={700} c="#c1c7d8" mb="xs">音声通知エンジン</Text>
+          <Select
+            value={ttsProvider}
+            onChange={(val) => setTtsProvider((val as TtsProvider) || 'googleCloud')}
+            data={[
+              { value: 'googleCloud', label: 'Google Cloud TTS (クラウドAPI)' },
+              { value: 'webSpeech', label: 'Windows標準音声 (Web Speech)' },
+              { value: 'voicevox_3', label: 'VOICEVOX (ずんだもん)' }
+            ]}
+            styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+          />
         </div>
+
+        {ttsProvider === 'googleCloud' && (
+          <>
+            <div>
+              <Text size="sm" fw={700} c="#c1c7d8" mb="xs">Google TTS 声の種類</Text>
+              <Select
+                value={googleVoiceName}
+                onChange={(val) => setGoogleVoiceName(val || 'ja-JP-Neural2-B')}
+                data={[
+                  { value: 'ja-JP-Neural2-B', label: '女性 (高品質 Neural2)' },
+                  { value: 'ja-JP-Neural2-C', label: '男性 (高品質 Neural2)' }
+                ]}
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+            </div>
+
+            <div>
+              <Text size="sm" fw={700} c="#c1c7d8" mb="xs">声の高さ・ピッチ ({googlePitch > 0 ? `+${googlePitch}` : googlePitch})</Text>
+              <Slider 
+                value={googlePitch} 
+                onChange={setGooglePitch} 
+                min={-10} 
+                max={10} 
+                step={0.5} 
+                color="indigo" 
+                marks={[
+                  { value: -10, label: '低い' },
+                  { value: 0, label: '標準' },
+                  { value: 10, label: '高い/明るい' }
+                ]}
+              />
+            </div>
+          </>
+        )}
+
+        <div>
+          <Text size="sm" fw={700} c="#c1c7d8" mb="xs">音量 ({volume}%)</Text>
+          <Slider value={volume} onChange={setVolume} color="indigo" />
+        </div>
+        
+        <Button onClick={handleTestPlay} variant="light" color="indigo" radius="md">
+          🎵 音声テスト再生
+        </Button>
+
+        <Divider color="rgba(255,255,255,0.08)" />
+
+        <div>
+          <Text size="sm" fw={700} c="#c1c7d8" mb="xs">タスク終了前の通知 (分前)</Text>
+          <NumberInput 
+            value={preNotifyMinutes} 
+            onChange={(val) => setPreNotifyMinutes(typeof val === 'number' ? val : 5)}
+            min={1} max={30}
+            styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+          />
+        </div>
+
       </Stack>
     </Card>
   )
 }
-
-export default Settings
