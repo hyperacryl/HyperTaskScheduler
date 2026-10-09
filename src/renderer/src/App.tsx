@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import '@mantine/core/styles.css'
 import { MantineProvider, createTheme, AppShell, Flex, Title, Group, Button, ActionIcon } from '@mantine/core'
 
-import { TtsProvider, setLiveVolume } from './services/audioService'
+import { TtsProvider, setLiveVolume, setTtsOptions } from './services/audioService'
 import { Scheduler } from './components/Scheduler'
 import { Pomodoro } from './components/Pomodoro'
 import { Settings } from './components/Settings'
@@ -122,6 +122,15 @@ export function App() {
   useEffect(() => { localStorage.setItem('ht_pre_break_notify_minutes', preBreakNotifyMinutes.toString()) }, [preBreakNotifyMinutes])
   useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
 
+  // audioService へ最新オプションを同期
+  useEffect(() => {
+    setTtsOptions({
+      googleTtsApiKey,
+      googleVoiceName,
+      googlePitch
+    })
+  }, [googleTtsApiKey, googleVoiceName, googlePitch])
+
   const handleResetTemplates = () => {
     setTemplates(defaultTemplates)
   }
@@ -145,7 +154,6 @@ export function App() {
     setIsCompactMode(enable)
     if (typeof window !== 'undefined' && window.api && window.api.resizeWindow) {
       if (enable) {
-        // 美しく視認性を保てるサイズ (340x220)
         window.api.resizeWindow(340, 220)
         if (!isAlwaysOnTop) {
           setIsAlwaysOnTop(true)
@@ -154,7 +162,6 @@ export function App() {
           }
         }
       } else {
-        // 通常画面サイズ (1100x720)
         window.api.resizeWindow(1100, 720)
       }
     }
@@ -218,7 +225,17 @@ export function App() {
           <AppShell.Main style={{ backgroundColor: '#0f111a', flex: 1, minHeight: 0, padding: '16px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: activeTab === 'scheduler' ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
-                <Scheduler apiKey={apiKey} ttsProvider={ttsProvider} volume={volume} preNotifyMinutes={preNotifyMinutes} templates={templates} tasks={tasks} setTasks={setTasks} />
+                <Scheduler 
+                  apiKey={apiKey} 
+                  ttsProvider={ttsProvider} 
+                  volume={volume} 
+                  preNotifyMinutes={preNotifyMinutes} 
+                  templates={templates} 
+                  tasks={tasks} 
+                  setTasks={setTasks} 
+                  autoBreakEnabled={autoBreakEnabled}
+                  breakMinutes={breakMinutes}
+                />
               </div>
               
               <div style={{ display: activeTab === 'pomodoro' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>

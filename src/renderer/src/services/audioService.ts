@@ -4,7 +4,21 @@ export type TtsProvider =
   | 'ttsQuest'
   | `voicevox_${number}`
 
-// Web Audio API 用の AudioContext（シングルトン管理）
+export interface TtsOptions {
+  googleTtsApiKey?: string
+  googleVoiceName?: string
+  googlePitch?: number
+  ttsQuestApiKey?: string
+  speakerId?: number
+}
+
+// グローバルオプション保持
+let globalTtsOptions: TtsOptions = {}
+
+export function setTtsOptions(options: TtsOptions): void {
+  globalTtsOptions = { ...globalTtsOptions, ...options }
+}
+
 let audioCtx: AudioContext | null = null
 
 function getAudioContext(): AudioContext {
@@ -18,15 +32,8 @@ function getAudioContext(): AudioContext {
   return audioCtx
 }
 
-// 現在再生中の GainNode（リアルタイム音量調整用）
 let currentGainNode: GainNode | null = null
 
-// 音声処理中（APIリクエスト中〜再生完了）フラグ
-let isSpeaking = false
-
-/**
- * 再生中の音声に対してリアルタイムに音量を変更
- */
 export function setLiveVolume(volume: number): void {
   if (currentGainNode && audioCtx) {
     const targetVolume = Math.max(0, Math.min(1, volume / 100))
@@ -34,8 +41,43 @@ export function setLiveVolume(volume: number): void {
   }
 }
 
+interface SpeechTask {
+  text: string
+  provider: TtsProvider
+  volume: number
+  options?: TtsOptions
+  resolve: () => void
+}
+
+const speechQueue: SpeechTask[] = []
+let isProcessingQueue = false
+
+async function processQueue(): Promise<void> {
+  if (isProcessingQueue || speechQueue.length === 0) return
+  isProcessingQueue = true
+
+  while (speechQueue.length > 0) {
+    const currentTask = speechQueue[0]
+    try {
+      await executeSpeak(
+        currentTask.text, 
+        currentTask.provider, 
+        currentTask.volume, 
+        currentTask.options
+      )
+    } catch (err) {
+      console.error('音声再生エラー:', err)
+    } finally {
+      speechQueue.shift()
+      currentTask.resolve()
+    }
+  }
+
+  isProcessingQueue = false
+}
+
 /**
- * 1. TTS Quest (VOICEVOX) での再生を試みる (Web Audio API 方式)
+ * VOICEVOX (TTS Quest) 再生 (404生成待ちリトライ付き)
  */
 async function playTtsQuest(
   text: string,
@@ -66,14 +108,26 @@ async function playTtsQuest(
     throw new Error('TTS Quest API から音声URLを取得できませんでした。')
   }
 
-  // 1. 音声データを ArrayBuffer として取得
-  const audioResp = await fetch(audioUrl)
-  if (!audioResp.ok) {
-    throw new Error('音声データのダウンロードに失敗しました。')
+  // 404 (ファイル未生成) 対策: 1秒間隔で最大12回リトライ
+  let audioResp: Response | null = null
+  for (let attempt = 0; attempt < 12; attempt++) {
+    audioResp = await fetch(audioUrl)
+    if (audioResp.ok) {
+      break
+    }
+    if (audioResp.status === 404) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      continue
+    }
+    throw new Error(`音声ダウンロードエラー: ステータスコード ${audioResp.status}`)
   }
+
+  if (!audioResp || !audioResp.ok) {
+    throw new Error('TTS Quest 音声データの生成完了待ちがタイムアウトしました。')
+  }
+
   const arrayBuffer = await audioResp.arrayBuffer()
 
-  // 2. Web Audio API でデコードして再生
   const ctx = getAudioContext()
   const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
 
@@ -97,7 +151,6 @@ async function playTtsQuest(
       currentGainNode = null
     }
 
-    // デッドロック防止用タイムアウト（15秒経過で強制解除）
     const timeoutTimer = setTimeout(() => {
       if (!isSettled) {
         isSettled = true
@@ -127,9 +180,6 @@ async function playTtsQuest(
   })
 }
 
-/**
- * 2. Google Cloud TTS での再生を試みる (Web Audio API 方式)
- */
 async function playGoogleCloudTts(
   text: string,
   volume: number,
@@ -222,9 +272,6 @@ async function playGoogleCloudTts(
   })
 }
 
-/**
- * 3. ブラウザ標準 (Web Speech API) での再生
- */
 function playWebSpeech(text: string, volume: number): Promise<void> {
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
@@ -245,85 +292,72 @@ function playWebSpeech(text: string, volume: number): Promise<void> {
   })
 }
 
-/**
- * メイン読み上げ関数（段階的フォールバック & 重複呼出ガード付き）
- */
-export async function speak(
+async function executeSpeak(
   text: string,
   provider: TtsProvider,
   volume: number,
-  options?: {
-    googleTtsApiKey?: string
-    googleVoiceName?: string
-    googlePitch?: number
-    ttsQuestApiKey?: string
-    speakerId?: number
-  }
+  options?: TtsOptions
 ): Promise<void> {
-  if (!text.trim()) return
+  // 引数の options とグローバル設定をマージ
+  const opts = { ...globalTtsOptions, ...options }
 
-  // 連投防止ガード
-  if (isSpeaking) {
-    console.warn('現在音声が再生中（または処理中）のため、新しい音声リクエストをスキップしました。')
-    return
+  if (provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
+    try {
+      let speakerId = opts.speakerId || 3
+      if (provider.startsWith('voicevox_')) {
+        const parsedId = parseInt(provider.replace('voicevox_', ''), 10)
+        if (!isNaN(parsedId)) speakerId = parsedId
+      }
+      await playTtsQuest(text, volume, speakerId, opts.ttsQuestApiKey)
+      return
+    } catch (err) {
+      console.warn('TTS Quest での再生に失敗しました。Google Cloud TTS へ切り替えます。', err)
+    }
   }
 
-  isSpeaking = true
-
-  try {
-    // 1. TTS Quest (VOICEVOX) の指定、またはデフォルト
-    if (provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
-      try {
-        let speakerId = options?.speakerId || 3
-        if (provider.startsWith('voicevox_')) {
-          const parsedId = parseInt(provider.replace('voicevox_', ''), 10)
-          if (!isNaN(parsedId)) speakerId = parsedId
-        }
-
-        await playTtsQuest(text, volume, speakerId, options?.ttsQuestApiKey)
-        return
-      } catch (err) {
-        console.warn('TTS Quest での再生に失敗しました。Google Cloud TTS へ切り替えます。', err)
-      }
+  if (provider === 'googleCloud' || provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
+    try {
+      await playGoogleCloudTts(
+        text,
+        volume,
+        opts.googleTtsApiKey || '',
+        opts.googleVoiceName || 'ja-JP-Neural2-B',
+        opts.googlePitch || 0
+      )
+      return
+    } catch (err) {
+      console.warn('Google Cloud TTS での再生に失敗しました。Web Speech API へ切り替えます。', err)
     }
-
-    // 2. Google Cloud TTS へのフォールバック
-    if (provider === 'googleCloud' || provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
-      try {
-        await playGoogleCloudTts(
-          text,
-          volume,
-          options?.googleTtsApiKey || '',
-          options?.googleVoiceName || 'ja-JP-Neural2-B',
-          options?.googlePitch || 0
-        )
-        return
-      } catch (err) {
-        console.warn('Google Cloud TTS での再生に失敗しました。Web Speech API へ切り替えます。', err)
-      }
-    }
-
-    // 3. Web Speech API への最終フォールバック
-    await playWebSpeech(text, volume)
-  } finally {
-    isSpeaking = false
   }
+
+  await playWebSpeech(text, volume)
 }
 
-/**
- * 通知テスト用・設定画面呼び出し用関数
- */
+export function speak(
+  text: string,
+  provider: TtsProvider,
+  volume: number,
+  options?: TtsOptions
+): Promise<void> {
+  if (!text.trim()) return Promise.resolve()
+
+  return new Promise((resolve) => {
+    speechQueue.push({
+      text,
+      provider,
+      volume,
+      options,
+      resolve
+    })
+    processQueue()
+  })
+}
+
 export async function playNotification(
   text: string,
   provider: TtsProvider,
   volume: number,
-  options?: {
-    googleTtsApiKey?: string
-    googleVoiceName?: string
-    googlePitch?: number
-    ttsQuestApiKey?: string
-    speakerId?: number
-  }
+  options?: TtsOptions
 ): Promise<void> {
   await speak(text, provider, volume, options)
 }
