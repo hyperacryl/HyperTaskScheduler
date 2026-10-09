@@ -1,17 +1,14 @@
-import { Card, Text, Button, Group, Flex, ActionIcon, SegmentedControl } from '@mantine/core'
+import { Card, Flex, Text, ActionIcon, Group, Button } from '@mantine/core'
 
 interface MiniTimerProps {
   activeTab: 'scheduler' | 'pomodoro'
   onChangeTab: (tab: 'scheduler' | 'pomodoro') => void
-
   pomodoroTitle: string
   pomodoroTimeString: string
   isPomodoroRunning: boolean
   onTogglePomodoro: () => void
-
   currentTaskTitle: string
   virtualTimeStr: string
-
   isAlwaysOnTop: boolean
   onToggleAlwaysOnTop: () => void
   onRestoreNormalMode: () => void
@@ -30,59 +27,59 @@ export function MiniTimer({
   onToggleAlwaysOnTop,
   onRestoreNormalMode
 }: MiniTimerProps) {
-  const timeDisplay = activeTab === 'pomodoro' ? pomodoroTimeString : (virtualTimeStr || '--:--:--')
-  const titleDisplay = activeTab === 'pomodoro' ? pomodoroTitle : (currentTaskTitle || '進行中のタスクなし')
-
   return (
     <Card
-      padding="12px"
+      padding="md"
+      radius="none"
       styles={{
         root: {
-          backgroundColor: '#151828',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '20px',
-          height: '100%',
+          backgroundColor: '#0f111a',
+          width: '100vw',
+          height: '100vh',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          userSelect: 'none',
-          boxShadow: '0 12px 32px rgba(0, 0, 0, 0.6)'
+          boxSizing: 'border-box',
+          border: 'none'
         }
       }}
     >
-      <Flex justify="space-between" align="center" gap="xs">
-        <SegmentedControl
-          size="xs"
-          radius="xl"
-          value={activeTab}
-          onChange={(val) => onChangeTab(val as 'scheduler' | 'pomodoro')}
-          data={[
-            { label: 'スケジューラ', value: 'scheduler' },
-            { label: 'ポモドーロ', value: 'pomodoro' }
-          ]}
-          styles={{
-            root: { backgroundColor: '#0f111a', border: '1px solid rgba(255,255,255,0.06)', padding: '2px' },
-            indicator: { background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' },
-            label: { color: '#ffffff', fontWeight: 700, fontSize: '0.68rem', padding: '2px 8px' }
-          }}
-        />
+      {/* 1. ヘッダー (通常画面のヘッダー右端ボタンと位置・サイズを完全同期) */}
+      <Flex justify="space-between" align="center" style={{ height: '36px' }}>
+        <Group gap={4} style={{ backgroundColor: '#151828', padding: '3px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <Button
+            size="xs"
+            radius="xl"
+            variant={activeTab === 'scheduler' ? 'filled' : 'subtle'}
+            color={activeTab === 'scheduler' ? 'indigo' : 'gray'}
+            onClick={() => onChangeTab('scheduler')}
+            styles={{ root: { height: '24px', padding: '0 10px', fontSize: '11px', fontWeight: 700 } }}
+          >
+            スケジューラ
+          </Button>
+          <Button
+            size="xs"
+            radius="xl"
+            variant={activeTab === 'pomodoro' ? 'filled' : 'subtle'}
+            color={activeTab === 'pomodoro' ? 'indigo' : 'gray'}
+            onClick={() => onChangeTab('pomodoro')}
+            styles={{ root: { height: '24px', padding: '0 10px', fontSize: '11px', fontWeight: 700 } }}
+          >
+            ポモドーロ
+          </Button>
+        </Group>
 
-        <Group gap="4px">
+        {/* 右上アクションボタン群: 通常モードと同等サイズ (size="md") */}
+        <Flex align="center" gap="xs">
           <ActionIcon
-            size="sm"
+            size="md"
             radius="md"
             variant="subtle"
             onClick={onRestoreNormalMode}
-            title="通常表示に戻す"
-            styles={{ 
-              root: { 
-                backgroundColor: '#21253a', 
-                color: '#a0a7bc',
-                border: '1px solid rgba(255,255,255,0.08)' 
-              } 
-            }}
+            title="通常サイズに戻す"
+            styles={{ root: { backgroundColor: '#21253a', color: '#c1c7d8', border: '1px solid rgba(255,255,255,0.08)' } }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 3 21 3 21 9"></polyline>
               <polyline points="9 21 3 21 3 15"></polyline>
               <line x1="21" y1="3" x2="14" y2="10"></line>
@@ -91,106 +88,70 @@ export function MiniTimer({
           </ActionIcon>
 
           <ActionIcon
-            size="sm"
+            size="md"
             radius="md"
             variant={isAlwaysOnTop ? 'filled' : 'subtle'}
             color={isAlwaysOnTop ? 'indigo' : 'gray'}
             onClick={onToggleAlwaysOnTop}
             title={isAlwaysOnTop ? '最前面表示解除' : '常に最前面に表示'}
-            styles={{ 
-              root: { 
-                backgroundColor: isAlwaysOnTop ? undefined : '#21253a', 
-                color: isAlwaysOnTop ? '#ffffff' : '#a0a7bc',
-                border: '1px solid rgba(255,255,255,0.08)' 
-              } 
-            }}
+            styles={{ root: { backgroundColor: isAlwaysOnTop ? undefined : '#21253a', border: '1px solid rgba(255,255,255,0.08)' } }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={isAlwaysOnTop ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={isAlwaysOnTop ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="17" x2="12" y2="22"></line>
               <path d="M5 17h14l-1.5-6H6.5L5 17z"></path>
               <path d="M9 11V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v7"></path>
             </svg>
           </ActionIcon>
-        </Group>
+        </Flex>
       </Flex>
 
-      <Flex direction="column" align="center" justify="center" my="xs">
-        <Text
-          size="xs"
-          fw={700}
-          c="#71788e"
-          ta="center"
-          style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            maxWidth: '100%',
-            letterSpacing: '0.02em',
-            marginBottom: '2px'
-          }}
-        >
-          {titleDisplay}
-        </Text>
+      {/* 2. メイン時計・タスク表示エリア */}
+      {activeTab === 'scheduler' ? (
+        <Flex direction="column" align="center" justify="center" my="xs">
+          <Text size="xs" c="#828a9e" fw={700} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '280px' }} mb={2}>
+            {currentTaskTitle}
+          </Text>
+          <Text fw={900} style={{ fontSize: '32px', color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            {virtualTimeStr || '00:00:00'}
+          </Text>
+        </Flex>
+      ) : (
+        <Flex direction="column" align="center" justify="center" my="xs">
+          <Text size="xs" c="#828a9e" fw={700} mb={2}>
+            {pomodoroTitle}
+          </Text>
+          <Text fw={900} style={{ fontSize: '32px', color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            {pomodoroTimeString}
+          </Text>
+        </Flex>
+      )}
 
-        <Text
-          fw={900}
-          c="white"
-          ta="center"
-          style={{
-            fontSize: '2.5rem',
-            lineHeight: 1,
-            letterSpacing: '-0.03em',
-            fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif'
-          }}
+      {/* 3. フッター操作ボタン */}
+      {activeTab === 'scheduler' ? (
+        <Button
+          fullWidth
+          size="sm"
+          radius="xl"
+          variant="light"
+          color="gray"
+          disabled
+          styles={{ root: { backgroundColor: '#151828', color: '#626982', border: 'none', height: '36px', fontWeight: 600 } }}
         >
-          {timeDisplay}
-        </Text>
-      </Flex>
-
-      <div>
-        {activeTab === 'pomodoro' ? (
-          <Button
-            size="xs"
-            radius="xl"
-            fullWidth
-            onClick={onTogglePomodoro}
-            styles={{
-              root: {
-                height: '32px',
-                background: isPomodoroRunning
-                  ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)'
-                  : 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-                border: 'none',
-                boxShadow: isPomodoroRunning
-                  ? '0 4px 14px rgba(239, 68, 68, 0.35)'
-                  : '0 4px 14px rgba(99, 102, 241, 0.35)'
-              },
-              label: { fontWeight: 800, fontSize: '0.8rem' }
-            }}
-          >
-            {isPomodoroRunning ? '一時停止' : '再開'}
-          </Button>
-        ) : (
-          <Button
-            size="xs"
-            radius="xl"
-            fullWidth
-            disabled
-            styles={{
-              root: {
-                height: '32px',
-                backgroundColor: '#21253a',
-                border: '1px solid rgba(255,255,255,0.08)'
-              },
-              label: { color: '#71788e', fontWeight: 700, fontSize: '0.75rem' }
-            }}
-          >
-            リアルタイム同期中
-          </Button>
-        )}
-      </div>
+          ● リアルタイム同期中
+        </Button>
+      ) : (
+        <Button
+          fullWidth
+          size="sm"
+          radius="xl"
+          variant="filled"
+          color={isPomodoroRunning ? 'orange' : 'indigo'}
+          onClick={onTogglePomodoro}
+          styles={{ root: { height: '36px', fontWeight: 700, fontSize: '13px' } }}
+        >
+          {isPomodoroRunning ? '一時停止' : 'スタート'}
+        </Button>
+      )}
     </Card>
   )
 }
-
-export default MiniTimer

@@ -10,13 +10,13 @@ import { MiniTimer } from './components/MiniTimer'
 import { usePomodoro } from './hooks/usePomodoro'
 import { Task, AnnounceTemplates } from './types'
 
-const defaultTemplates: AnnounceTemplates = {
-  taskStart: '{title} の時間です。始めましょう。',
-  taskPreEnd: 'まもなく {title} が終了します。',
-  taskEnd: '{title} の時間になりました。次のタスクへ移りましょう。',
-  breakStart: '休憩時間です！しっかり休んでリフレッシュしましょう。',
-  breakPreEnd: 'まもなく休憩が終了します。次の準備を始めましょう！',
-  allCompleted: 'すべてのタスクが片付きました。お疲れ様でした！'
+export const defaultTemplates: AnnounceTemplates = {
+  taskStart: '{title} を開始します。集中していきましょう！',
+  taskPreEnd: '{title} 終了まであと {minutes} 分です。',
+  taskEnd: '{title} が終了しました。お疲れ様でした。',
+  breakStart: '休憩時間です。しっかりリフレッシュしましょう。',
+  breakPreEnd: 'まもなく休憩が終了します。次は {nextTitle} です。',
+  allCompleted: '本日のタスクがすべて終了しました。お疲れ様でした！'
 }
 
 const customTheme = createTheme({
@@ -78,6 +78,9 @@ export function App() {
     if (!saved) return defaultTemplates
     try {
       const parsed = JSON.parse(saved)
+      if (parsed.taskPreNotify || parsed.taskEnd?.includes('次のタスクへ移りましょう') || parsed.taskStart?.includes('始めましょう。')) {
+        return defaultTemplates
+      }
       return { ...defaultTemplates, ...parsed }
     } catch {
       return defaultTemplates
@@ -119,6 +122,10 @@ export function App() {
   useEffect(() => { localStorage.setItem('ht_pre_break_notify_minutes', preBreakNotifyMinutes.toString()) }, [preBreakNotifyMinutes])
   useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
 
+  const handleResetTemplates = () => {
+    setTemplates(defaultTemplates)
+  }
+
   const currentTaskTitle = (() => {
     if (!virtualTimeStr || tasks.length === 0) return '予定なし'
     const nowHHMM = virtualTimeStr.substring(0, 5)
@@ -138,7 +145,8 @@ export function App() {
     setIsCompactMode(enable)
     if (typeof window !== 'undefined' && window.api && window.api.resizeWindow) {
       if (enable) {
-        window.api.resizeWindow(330, 160)
+        // 美しく視認性を保てるサイズ (340x220)
+        window.api.resizeWindow(340, 220)
         if (!isAlwaysOnTop) {
           setIsAlwaysOnTop(true)
           if (window.api.setAlwaysOnTop) {
@@ -146,6 +154,7 @@ export function App() {
           }
         }
       } else {
+        // 通常画面サイズ (1100x720)
         window.api.resizeWindow(1100, 720)
       }
     }
@@ -154,7 +163,7 @@ export function App() {
   return (
     <MantineProvider theme={customTheme} forceColorScheme="dark">
       {isCompactMode ? (
-        <div style={{ width: '100vw', height: '100vh', padding: '6px', boxSizing: 'border-box', backgroundColor: '#0f111a' }}>
+        <div style={{ width: '100vw', height: '100vh', backgroundColor: '#0f111a', boxSizing: 'border-box' }}>
           <MiniTimer
             activeTab={activeTab === 'settings' ? 'scheduler' : activeTab}
             onChangeTab={(tab) => setActiveTab(tab)}
@@ -229,6 +238,7 @@ export function App() {
                   breakMinutes={breakMinutes} setBreakMinutes={setBreakMinutes}
                   preBreakNotifyMinutes={preBreakNotifyMinutes} setPreBreakNotifyMinutes={setPreBreakNotifyMinutes}
                   templates={templates} setTemplates={setTemplates}
+                  onResetTemplates={handleResetTemplates}
                 />
               </div>
             </div>

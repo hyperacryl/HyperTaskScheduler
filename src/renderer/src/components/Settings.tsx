@@ -1,6 +1,6 @@
 import { 
   Stack, Card, Text, Title, Select, Slider, Button, 
-  NumberInput, Divider, PasswordInput, TextInput, Switch, Tabs 
+  NumberInput, Divider, PasswordInput, TextInput, Switch, Tabs, Flex 
 } from '@mantine/core'
 import { playNotification, TtsProvider } from '../services/audioService'
 import { AnnounceTemplates } from '../types'
@@ -28,6 +28,7 @@ interface SettingsProps {
   setPreBreakNotifyMinutes: (val: number) => void
   templates: AnnounceTemplates
   setTemplates: (val: AnnounceTemplates) => void
+  onResetTemplates?: () => void
 }
 
 export function Settings({
@@ -41,7 +42,8 @@ export function Settings({
   autoBreakEnabled, setAutoBreakEnabled,
   breakMinutes, setBreakMinutes,
   preBreakNotifyMinutes, setPreBreakNotifyMinutes,
-  templates, setTemplates
+  templates, setTemplates,
+  onResetTemplates
 }: SettingsProps) {
 
   const handleTestPlay = () => {
@@ -218,23 +220,33 @@ export function Settings({
         {/* 4. 通知セリフ設定 */}
         <Tabs.Panel value="templates" pl="xl">
           <Stack gap="md">
-            <Title order={5} c="white" fw={700}>通知セリフのカスタマイズ</Title>
-            <Text size="xs" c="#828a9e">
-              使用可能変数: <code style={{ color: '#7950f2' }}>{'{title}'}</code> (タスク名), <code style={{ color: '#7950f2' }}>{'{minutes}'}</code> (残り分数)
-            </Text>
+            <Flex justify="space-between" align="center">
+              <Title order={5} c="white" fw={700}>通知セリフのカスタマイズ</Title>
+              {onResetTemplates && (
+                <Button variant="subtle" color="gray" size="xs" onClick={onResetTemplates}>
+                  🔄 デフォルトに戻す
+                </Button>
+              )}
+            </Flex>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">1. タスク開始時</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">1. タスク開始時</Text>
+                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code></Text>
+              </Flex>
               <TextInput 
                 value={templates.taskStart || ''} 
                 onChange={(e) => setTemplates({ ...templates, taskStart: e.target.value })}
-                placeholder="例: {title} の時間です。頑張っていきましょう！"
+                placeholder="例: {title} を開始します。集中していきましょう！"
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">2. タスク終了前</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">2. タスク終了前</Text>
+                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code>, <code style={{ color: '#818cf8' }}>{'{minutes}'}</code></Text>
+              </Flex>
               <TextInput 
                 value={templates.taskPreEnd || ''} 
                 onChange={(e) => setTemplates({ ...templates, taskPreEnd: e.target.value })}
@@ -244,41 +256,53 @@ export function Settings({
             </div>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">3. タスク終了時</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">3. タスク終了時</Text>
+                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code></Text>
+              </Flex>
               <TextInput 
                 value={templates.taskEnd || ''} 
                 onChange={(e) => setTemplates({ ...templates, taskEnd: e.target.value })}
-                placeholder="例: {title} の終了時間です。一息つきましょう。"
+                placeholder="例: {title} が終了しました。お疲れ様でした。"
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">4. 休憩開始時</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">4. 休憩開始時</Text>
+                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{minutes}'}</code></Text>
+              </Flex>
               <TextInput 
                 value={templates.breakStart || ''} 
                 onChange={(e) => setTemplates({ ...templates, breakStart: e.target.value })}
-                placeholder="例: 休憩時間です！しっかり休んでリフレッシュしましょう。"
+                placeholder="例: 休憩時間です。しっかりリフレッシュしましょう。"
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">5. 休憩終了前</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">5. 休憩終了前</Text>
+                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{minutes}'}</code>, <code style={{ color: '#818cf8' }}>{'{nextTitle}'}</code></Text>
+              </Flex>
               <TextInput 
                 value={templates.breakPreEnd || ''} 
                 onChange={(e) => setTemplates({ ...templates, breakPreEnd: e.target.value })}
-                placeholder="例: まもなく休憩が終了します。次の準備を始めましょう！"
+                placeholder="例: まもなく休憩が終了します。次は {nextTitle} です。"
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>
 
             <div>
-              <Text size="xs" c="#828a9e" mb="4px">6. すべてのタスク完了時</Text>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">6. すべてのタスク完了時</Text>
+                <Text size="xs" c="#828a9e">使用可能変数なし</Text>
+              </Flex>
               <TextInput 
                 value={templates.allCompleted || ''} 
                 onChange={(e) => setTemplates({ ...templates, allCompleted: e.target.value })}
-                placeholder="例: すべてのタスクが片付きました。お疲れ様でした！"
+                placeholder="例: 本日のタスクがすべて終了しました。お疲れ様でした！"
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>

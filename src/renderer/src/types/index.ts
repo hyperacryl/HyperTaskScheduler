@@ -5,14 +5,14 @@ export interface Task {
   endTime: string
   estimatedMinutes: number
   completed: boolean
-  isBreak?: boolean // 手動で追加された休憩タスクかの識別フラグ
+  isBreak?: boolean
 }
 
 export interface AnnounceTemplates {
-  taskStart: string       // タスク開始時
-  taskPreEnd: string      // タスク終了前
-  taskEnd: string         // タスク終了時
-  breakStart: string      // 休憩開始時
-  breakPreEnd: string     // 休憩終了前
-  allCompleted: string    // 全タスク完了時
+  taskStart: string       // 1. タスク開始時 ({title})
+  taskPreEnd: string      // 2. タスク終了前 ({title}, {minutes})
+  taskEnd: string         // 3. タスク終了時 ({title})
+  breakStart: string      // 4. 休憩開始時 ({minutes})
+  breakPreEnd: string     // 5. 休憩終了前 ({minutes}, {nextTitle})
+  allCompleted: string    // 6. 全タスク完了時
 }

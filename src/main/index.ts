@@ -7,8 +7,8 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
     height: 720,
-    minWidth: 360,
-    minHeight: 200,
+    minWidth: 340,
+    minHeight: 220,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -50,13 +50,24 @@ app.whenReady().then(() => {
     }
   })
 
-  // ウィンドウサイズの変更 (コンパクトモード / 通常モード切替)
-  ipcMain.on('resize-window', (event, { width, height }: { width: number; height: number }) => {
+  // ウィンドウサイズの変更 (右上角のスクリーン座標を絶対保持)
+  ipcMain.on('resize-window', (event, { width: newWidth, height: newHeight }: { width: number; height: number }) => {
     const webContents = event.sender
     const win = BrowserWindow.fromWebContents(webContents)
-    if (win) {
-      win.setSize(width, height, true)
-    }
+    if (!win) return
+
+    const [currentX, currentY] = win.getPosition()
+    const [currentW] = win.getSize()
+
+    // 右上端 (currentX + currentW) を固定して新しい X 座標を補正計算
+    const newX = currentX + (currentW - newWidth)
+
+    win.setBounds({
+      x: Math.round(newX),
+      y: currentY,
+      width: Math.round(newWidth),
+      height: Math.round(newHeight)
+    }, true)
   })
 
   createWindow()
