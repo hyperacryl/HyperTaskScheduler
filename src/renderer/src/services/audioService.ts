@@ -1,167 +1,231 @@
-export type TtsProvider = 'webSpeech' | 'googleCloud' | 'voicevox_3' | 'voicevox_2' | 'voicevox_8' | 'voicevox_14'
+export type TtsProvider = 'ttsQuest' | 'googleCloud' | 'webSpeech' | 'voicevox_3' | 'voicevox_2' | 'voicevox_8' | 'voicevox_14'
 
-let cachedVoices: SpeechSynthesisVoice[] = []
-let currentAudio: HTMLAudioElement | null = null
+// 現在再生中の Audio インスタンス（リアルタイム音量調整用）
+let currentAudioInstance: HTMLAudioElement | null = null
+
+// 音声処理中（APIリクエスト中〜再生完了）フラグ（連投・重複API呼び出し防止用）
+let isSpeaking = false
 
 /**
- * 現在再生中の音声の音量をリアルタイムで変更します
+ * 再生中の音声に対してリアルタイムに音量を変更
  */
-export const setLiveVolume = (volume: number): void => {
-  const normalizedVolume = volume <= 1 ? Math.max(0, Math.min(1, volume)) : Math.max(0, Math.min(1, volume / 100))
-  if (currentAudio) {
-    currentAudio.volume = normalizedVolume
+export function setLiveVolume(volume: number): void {
+  if (currentAudioInstance) {
+    currentAudioInstance.volume = Math.max(0, Math.min(1, volume / 100))
   }
 }
 
-const getVoicesAsync = (): Promise<SpeechSynthesisVoice[]> => {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      resolve([])
-      return
+/**
+ * 1. TTS Quest (VOICEVOX) での再生を試みる
+ */
+async function playTtsQuest(
+  text: string,
+  volume: number,
+  speakerId: number = 3,
+  apiKey: string = ''
+): Promise<void> {
+  const queryParams = new URLSearchParams({
+    text: text,
+    speaker: speakerId.toString()
+  })
+  if (apiKey.trim()) {
+    queryParams.append('apiKey', apiKey.trim())
+  }
+
+  const response = await fetch(`https://api.tts.quest/v3/voicevox/synthesis?${queryParams.toString()}`)
+  if (!response.ok) {
+    throw new Error(`TTS Quest API エラー: ステータスコード ${response.status}`)
+  }
+
+  const data = await response.json()
+  
+  if (data.isAudioError) {
+    throw new Error('TTS Quest API側で音声合成エラーが発生しました。')
+  }
+
+  const audioUrl = data.mp3StreamingUrl || data.mp3DownloadUrl
+  if (!audioUrl) {
+    throw new Error('TTS Quest API から音声URLを取得できませんでした。')
+  }
+
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(audioUrl)
+    audio.volume = Math.max(0, Math.min(1, volume / 100))
+    currentAudioInstance = audio
+
+    audio.onended = () => {
+      currentAudioInstance = null
+      resolve()
     }
-    const voices = window.speechSynthesis.getVoices()
-    if (voices.length > 0) {
-      cachedVoices = voices
-      resolve(voices)
-      return
+    audio.onerror = () => {
+      currentAudioInstance = null
+      reject(new Error(`TTS Quest 音声データの読み込み・再生に失敗しました。`))
     }
-    window.speechSynthesis.onvoiceschanged = () => {
-      cachedVoices = window.speechSynthesis.getVoices()
-      resolve(cachedVoices)
-    }
-    setTimeout(() => {
-      resolve(window.speechSynthesis.getVoices())
-    }, 500)
+
+    audio.play().catch((err) => {
+      currentAudioInstance = null
+      reject(err)
+    })
   })
 }
 
-export const speakText = async (
-  text: string, 
-  provider: TtsProvider, 
-  volume: number = 50,
-  _offset: number = 0,
+/**
+ * 2. Google Cloud TTS での再生を試みる
+ */
+async function playGoogleCloudTts(
+  text: string,
+  volume: number,
+  apiKey: string,
   voiceName: string = 'ja-JP-Neural2-B',
   pitch: number = 0
-): Promise<void> => {
-  if (!text || volume === 0) return
-
-  const normalizedVolume = volume <= 1 ? Math.max(0, Math.min(1, volume)) : Math.max(0, Math.min(1, volume / 100))
-
-  // 既存再生中の音声を停止
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
+): Promise<void> {
+  if (!apiKey.trim()) {
+    throw new Error('Google Cloud TTS APIキーが設定されていません。')
   }
 
-  // Google Cloud TTS の処理
-  if (provider === 'googleCloud') {
-    const apiKey = localStorage.getItem('ht_google_tts_api_key') || ''
-    if (!apiKey) {
-      console.warn('⚠️ Google Cloud TTS APIキーが設定されていません。Web Speech API にフォールバックします。')
-    } else {
-      try {
-        const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            input: { text: text },
-            voice: { languageCode: 'ja-JP', name: voiceName },
-            audioConfig: { 
-              audioEncoding: 'MP3',
-              pitch: pitch // ピッチ（-20.0 ～ 20.0）を設定
-            }
-          })
-        })
-        
-        if (!response.ok) throw new Error(`Google Cloud TTS API エラー: ${response.statusText}`)
-        
-        const data = await response.json()
-        const audioSrc = `data:audio/mp3;base64,${data.audioContent}`
-        
-        const audio = new Audio(audioSrc)
-        audio.volume = normalizedVolume
-        currentAudio = audio
-        
-        audio.onended = () => {
-          if (currentAudio === audio) currentAudio = null
-        }
+  const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${apiKey.trim()}`
+  const body = {
+    input: { text },
+    voice: { languageCode: 'ja-JP', name: voiceName },
+    audioConfig: { audioEncoding: 'MP3', pitch: pitch }
+  }
 
-        await audio.play()
-        return
-      } catch (error) {
-        console.warn('⚠️ Google Cloud TTSの呼び出しに失敗しました。Web Speech API にフォールバックします:', error)
-      }
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+
+  if (!response.ok) {
+    throw new Error(`Google Cloud TTS エラー: ${response.statusText}`)
+  }
+
+  const data = await response.json()
+  if (!data.audioContent) {
+    throw new Error('Google Cloud TTS から音声コンテンツを取得できませんでした。')
+  }
+
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(`data:audio/mp3;base64,${data.audioContent}`)
+    audio.volume = Math.max(0, Math.min(1, volume / 100))
+    currentAudioInstance = audio
+
+    audio.onended = () => {
+      currentAudioInstance = null
+      resolve()
     }
-  }
-
-  // VOICEVOX の処理
-  if (provider.startsWith('voicevox_')) {
-    const speakerId = parseInt(provider.replace('voicevox_', ''), 10)
-    const hosts = ['http://127.0.0.1:50021', 'http://localhost:50021']
-    let success = false
-
-    for (const host of hosts) {
-      try {
-        const queryRes = await fetch(`${host}/audio_query?text=${encodeURIComponent(text)}&speaker=${speakerId}`, {
-          method: 'POST'
-        })
-        if (!queryRes.ok) continue
-        const queryData = await queryRes.json()
-
-        const synthRes = await fetch(`${host}/synthesis?speaker=${speakerId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(queryData)
-        })
-        if (!synthRes.ok) continue
-
-        const audioBlob = await synthRes.blob()
-        const audioUrl = URL.createObjectURL(audioBlob)
-        const audio = new Audio(audioUrl)
-        audio.volume = normalizedVolume
-        currentAudio = audio
-
-        audio.onended = () => {
-          if (currentAudio === audio) currentAudio = null
-        }
-
-        await audio.play()
-        success = true
-        break
-      } catch {
-        // 次のホストを試行
-      }
+    audio.onerror = () => {
+      currentAudioInstance = null
+      reject(new Error('Google Cloud TTS 音声の再生中にエラーが発生しました。'))
     }
 
-    if (success) return
-    console.warn('⚠️ VOICEVOX に接続できません。Web Speech API にフォールバックします。')
-  }
+    audio.play().catch(reject)
+  })
+}
 
-  // Web Speech API（Windows標準音声へのフォールバック）
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+/**
+ * 3. ブラウザ標準 (Web Speech API) での再生
+ */
+function playWebSpeech(text: string, volume: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (!('speechSynthesis' in window)) {
+      console.error('Web Speech API に非対応の環境です。')
+      resolve()
+      return
+    }
+
     window.speechSynthesis.cancel()
-
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.volume = normalizedVolume
     utterance.lang = 'ja-JP'
+    utterance.volume = Math.max(0, Math.min(1, volume / 100))
 
-    const voices = cachedVoices.length > 0 ? cachedVoices : await getVoicesAsync()
-    const jaVoice = voices.find((v) => v.lang.includes('ja') || v.lang.includes('JP'))
-    if (jaVoice) {
-      utterance.voice = jaVoice
-    }
+    utterance.onend = () => resolve()
+    utterance.onerror = () => resolve()
 
     window.speechSynthesis.speak(utterance)
+  })
+}
+
+/**
+ * メイン読み上げ関数（段階的フォールバック & 重複呼出ガード付き）
+ */
+export async function speak(
+  text: string,
+  provider: TtsProvider,
+  volume: number,
+  options?: {
+    googleTtsApiKey?: string
+    googleVoiceName?: string
+    googlePitch?: number
+    ttsQuestApiKey?: string
+    speakerId?: number
+  }
+): Promise<void> {
+  if (!text.trim()) return
+
+  // 連投防止ガード: すでに音声生成・再生中であれば新たなリクエストを遮断する
+  if (isSpeaking) {
+    console.warn('現在音声が再生中（または処理中）のため、新しい音声リクエストをスキップしました。')
+    return
+  }
+
+  isSpeaking = true
+
+  try {
+    // 1. TTS Quest (VOICEVOX) の指定、またはデフォルト
+    if (provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
+      try {
+        let speakerId = options?.speakerId || 3 // デフォルト: ずんだもん
+        if (provider === 'voicevox_3') speakerId = 3
+        if (provider === 'voicevox_2') speakerId = 2
+        if (provider === 'voicevox_8') speakerId = 8
+        if (provider === 'voicevox_14') speakerId = 14
+
+        await playTtsQuest(text, volume, speakerId, options?.ttsQuestApiKey)
+        return
+      } catch (err) {
+        console.warn('TTS Quest での再生に失敗しました。Google Cloud TTS へ切り替えます。', err)
+      }
+    }
+
+    // 2. Google Cloud TTS へのフォールバック
+    if (provider === 'googleCloud' || provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
+      try {
+        await playGoogleCloudTts(
+          text,
+          volume,
+          options?.googleTtsApiKey || '',
+          options?.googleVoiceName || 'ja-JP-Neural2-B',
+          options?.googlePitch || 0
+        )
+        return
+      } catch (err) {
+        console.warn('Google Cloud TTS での再生に失敗しました。Web Speech API へ切り替えます。', err)
+      }
+    }
+
+    // 3. Web Speech API への最終フォールバック
+    await playWebSpeech(text, volume)
+  } finally {
+    // 成功・失敗に関わらず、発話が完全に終了した時点でロック解除
+    isSpeaking = false
   }
 }
 
-export const playNotification = async (
-  text: string, 
-  provider: TtsProvider, 
-  volume: number = 50,
-  offset: number = 0,
-  voiceName: string = 'ja-JP-Neural2-B',
-  pitch: number = 0
-): Promise<void> => {
-  await speakText(text, provider, volume, offset, voiceName, pitch)
+/**
+ * 通知テスト用・設定画面呼び出し用関数
+ */
+export async function playNotification(
+  text: string,
+  provider: TtsProvider,
+  volume: number,
+  options?: {
+    googleTtsApiKey?: string
+    googleVoiceName?: string
+    googlePitch?: number
+    ttsQuestApiKey?: string
+    speakerId?: number
+  }
+): Promise<void> {
+  await speak(text, provider, volume, options)
 }

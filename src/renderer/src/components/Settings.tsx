@@ -36,9 +36,11 @@ export function Settings({
       'これはテスト再生です。音量と声質を確認してください。', 
       ttsProvider, 
       volume, 
-      0, 
-      googleVoiceName, 
-      googlePitch
+      {
+        googleTtsApiKey,
+        googleVoiceName,
+        googlePitch
+      }
     )
   }
 
@@ -73,11 +75,14 @@ export function Settings({
           <Text size="sm" fw={700} c="#c1c7d8" mb="xs">音声通知エンジン</Text>
           <Select
             value={ttsProvider}
-            onChange={(val) => setTtsProvider((val as TtsProvider) || 'googleCloud')}
+            onChange={(val) => setTtsProvider((val as TtsProvider) || 'voicevox_3')}
             data={[
+              { value: 'voicevox_3', label: 'VOICEVOX (ずんだもん)' },
+              { value: 'voicevox_2', label: 'VOICEVOX (四国めたん)' },
+              { value: 'voicevox_8', label: 'VOICEVOX (春日部つむぎ)' },
+              { value: 'voicevox_14', label: 'VOICEVOX (冥鳴ひまり)' },
               { value: 'googleCloud', label: 'Google Cloud TTS (クラウドAPI)' },
-              { value: 'webSpeech', label: 'Windows標準音声 (Web Speech)' },
-              { value: 'voicevox_3', label: 'VOICEVOX (ずんだもん)' }
+              { value: 'webSpeech', label: 'Windows標準音声 (Web Speech)' }
             ]}
             styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
           />
