@@ -23,11 +23,19 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
   const [timeOffset, setTimeOffset] = useState<number>(0)
   const [virtualTimeStr, setVirtualTimeStr] = useState<string>('')
 
-  const [baseTime, setBaseTime] = useState<string>(() => {
-    const now = new Date()
-    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-  })
+  // 開始時刻管理（カスタム設定中かどうか）
+  const [customBaseTime, setCustomBaseTime] = useState<string>('')
+  const [isCustomTime, setIsCustomTime] = useState<boolean>(false)
+
   const [isGenerating, setIsGenerating] = useState<boolean>(false)
+
+  // 仮想現在時刻の取得ヘルパー (HH:mm)
+  const getVirtualHHMM = (): string => {
+    const virtualNow = new Date(Date.now() + timeOffset)
+    const h = virtualNow.getHours().toString().padStart(2, '0')
+    const m = virtualNow.getMinutes().toString().padStart(2, '0')
+    return `${h}:${m}`
+  }
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -42,9 +50,26 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
 
   useScheduleMonitor(tasks, ttsProvider, volume, preNotifyMinutes, timeOffset, templates)
 
+  // 表示用および送信用の基準時刻
+  const effectiveBaseTime = isCustomTime && customBaseTime ? customBaseTime : getVirtualHHMM()
+
   const handleSetNow = (): void => {
-    const virtualNow = new Date(Date.now() + timeOffset)
-    setBaseTime(`${virtualNow.getHours().toString().padStart(2, '0')}:${virtualNow.getMinutes().toString().padStart(2, '0')}`)
+    setIsCustomTime(false)
+    setCustomBaseTime('')
+  }
+
+  const handleAddMinutes = (minutes: number): void => {
+    const currentBase = isCustomTime && customBaseTime ? customBaseTime : getVirtualHHMM()
+    const [h, m] = currentBase.split(':').map(Number)
+    
+    const date = new Date(Date.now() + timeOffset)
+    date.setHours(h, m + minutes, 0, 0)
+    
+    const resH = date.getHours().toString().padStart(2, '0')
+    const resM = date.getMinutes().toString().padStart(2, '0')
+    
+    setCustomBaseTime(`${resH}:${resM}`)
+    setIsCustomTime(true)
   }
 
   const addOffsetSeconds = (seconds: number): void => {
@@ -60,7 +85,9 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
     setErrorMessage('')
     try {
       setIsGenerating(true)
-      const newTasks = await generateSchedule(taskInput, apiKey, baseTime)
+      // 生成実行時点での基準時刻を適用
+      const targetTime = isCustomTime && customBaseTime ? customBaseTime : getVirtualHHMM()
+      const newTasks = await generateSchedule(taskInput, apiKey, targetTime)
       setTasks(newTasks)
       setTaskInput('')
     } catch (error) {
@@ -90,30 +117,14 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
     >
       <div style={{ width: '380px', flexShrink: 0 }}>
         <Stack gap="sm">
+          {/* APP CLOCK カード */}
           <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
-            <Flex justify="space-between" align="center" mb="2px">
-              <Text size="xs" style={{ color: '#71788e' }} fw={800} tt="uppercase">APP CLOCK</Text>
-              <Group gap="xs" align="center">
-                <Text size="xs" style={{ color: '#71788e' }} fw={700}>開始:</Text>
-                <TextInput 
-                  type="time" 
-                  value={baseTime} 
-                  onChange={(e) => setBaseTime(e.target.value)} 
-                  radius="md"
-                  size="xs"
-                  w={90}
-                  tabIndex={2}
-                  styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', fontWeight: 700, padding: '2px 6px' } }}
-                />
-                <Button size="xs" radius="md" variant="subtle" color="gray" p={0} onClick={handleSetNow} tabIndex={3} style={{ fontSize: '0.75rem', textDecoration: 'underline' }}>
-                  現在時刻
-                </Button>
-              </Group>
-            </Flex>
+            <Text size="xs" style={{ color: '#71788e' }} fw={800} tt="uppercase">APP CLOCK</Text>
 
             <Text 
               fw={800} 
               c="white" 
+              my="4px"
               style={{ 
                 fontSize: '2.5rem', 
                 letterSpacing: '-0.02em',
@@ -123,8 +134,73 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
             >
               {virtualTimeStr || '--:--:--'}
             </Text>
+
+            {/* 開始時刻設定 & クイック加算エリア */}
+            <Stack gap="xs" mt="sm" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
+              <Flex justify="space-between" align="center">
+                <Text size="xs" style={{ color: '#c1c7d8' }} fw={700}>開始時刻:</Text>
+                <Group gap="xs" align="center">
+                  <TextInput 
+                    type="time" 
+                    value={effectiveBaseTime} 
+                    onChange={(e) => {
+                      setCustomBaseTime(e.target.value)
+                      setIsCustomTime(true)
+                    }} 
+                    radius="md"
+                    size="xs"
+                    w={90}
+                    tabIndex={2}
+                    styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', fontWeight: 700, padding: '2px 6px' } }}
+                  />
+                  <Button 
+                    size="xs" 
+                    radius="md" 
+                    variant={isCustomTime ? 'filled' : 'subtle'} 
+                    color={isCustomTime ? 'indigo' : 'gray'} 
+                    p="0 8px" 
+                    onClick={handleSetNow} 
+                    tabIndex={3} 
+                    style={{ fontSize: '0.72rem' }}
+                  >
+                    {isCustomTime ? '現在時刻に戻す' : '現在時刻'}
+                  </Button>
+                </Group>
+              </Flex>
+
+              <Flex gap="6px">
+                {[
+                  { label: '+5分', value: 5 },
+                  { label: '+10分', value: 10 },
+                  { label: '+30分', value: 30 },
+                  { label: '+1時間', value: 60 }
+                ].map((btn) => (
+                  <Button 
+                    key={btn.label} 
+                    size="xs" 
+                    radius="xl" 
+                    variant="subtle"
+                    onClick={() => handleAddMinutes(btn.value)}
+                    styles={{
+                      root: {
+                        backgroundColor: '#21253a',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        color: '#c1c7d8',
+                        padding: '0 8px',
+                        height: '24px',
+                        flex: 1
+                      },
+                      label: { fontWeight: 700, fontSize: '0.7rem' }
+                    }}
+                  >
+                    {btn.label}
+                  </Button>
+                ))}
+              </Flex>
+            </Stack>
           </Card>
 
+          {/* GENERATOR カード */}
           <Card padding="16px" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
             <Text size="xs" style={{ color: '#71788e' }} fw={800} tt="uppercase" mb="xs">GENERATOR</Text>
             <Title order={5} mb="xs" c="white" fw={800}>タスク生成</Title>
@@ -170,6 +246,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
             </Stack>
           </Card>
 
+          {/* デバッグ微調整 カード */}
           <Card padding="sm" styles={{ root: { backgroundColor: '#0f111a', borderRadius: '16px', border: '1px dashed rgba(255, 255, 255, 0.08)', transition: 'none' } }}>
             <Text size="xs" style={{ color: '#71788e' }} fw={700} mb="xs">🐞 デバッグ微調整</Text>
             <Group mb="xs" gap="xs">
@@ -213,6 +290,7 @@ export function Scheduler({ apiKey, ttsProvider, volume, preNotifyMinutes, templ
         </Stack>
       </div>
 
+      {/* TIMELINE カード */}
       <div style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Card 
           padding="20px" 
