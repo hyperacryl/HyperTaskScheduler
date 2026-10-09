@@ -73,6 +73,22 @@ export function App() {
     return saved ? parseInt(saved, 10) : 1
   })
 
+  const [isDebugMode, setIsDebugMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ht_is_debug')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  // ポモドーロの自動サイクル設定
+  const [pomodoroAutoCycle, setPomodoroAutoCycle] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ht_pomo_auto_cycle')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  const [pomodoroTargetCycles, setPomodoroTargetCycles] = useState<number>(() => {
+    const saved = localStorage.getItem('ht_pomo_target_cycles')
+    return saved ? parseInt(saved, 10) : 0
+  })
+
   const [templates, setTemplates] = useState<AnnounceTemplates>(() => {
     const saved = localStorage.getItem('ht_announce_templates')
     if (!saved) return defaultTemplates
@@ -103,14 +119,20 @@ export function App() {
     return () => clearInterval(interval)
   }, [])
 
-  const pomodoro = usePomodoro(ttsProvider, volume, preNotifyMinutes)
+  const pomodoro = usePomodoro(ttsProvider, volume, preNotifyMinutes, {
+    autoCycleEnabled: pomodoroAutoCycle,
+    targetCycles: pomodoroTargetCycles
+  })
 
   useEffect(() => { localStorage.setItem('ht_api_key', apiKey) }, [apiKey])
   useEffect(() => { localStorage.setItem('ht_google_tts_api_key', googleTtsApiKey) }, [googleTtsApiKey])
   useEffect(() => { localStorage.setItem('ht_google_voice_name', googleVoiceName) }, [googleVoiceName])
   useEffect(() => { localStorage.setItem('ht_google_pitch', googlePitch.toString()) }, [googlePitch])
   useEffect(() => { localStorage.setItem('ht_tts_provider', ttsProvider) }, [ttsProvider])
-  
+  useEffect(() => { localStorage.setItem('ht_is_debug', isDebugMode.toString()) }, [isDebugMode])
+  useEffect(() => { localStorage.setItem('ht_pomo_auto_cycle', pomodoroAutoCycle.toString()) }, [pomodoroAutoCycle])
+  useEffect(() => { localStorage.setItem('ht_pomo_target_cycles', pomodoroTargetCycles.toString()) }, [pomodoroTargetCycles])
+
   useEffect(() => { 
     localStorage.setItem('ht_volume', volume.toString())
     setLiveVolume(volume)
@@ -122,7 +144,6 @@ export function App() {
   useEffect(() => { localStorage.setItem('ht_pre_break_notify_minutes', preBreakNotifyMinutes.toString()) }, [preBreakNotifyMinutes])
   useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
 
-  // audioService へ最新オプションを同期
   useEffect(() => {
     setTtsOptions({
       googleTtsApiKey,
@@ -235,11 +256,22 @@ export function App() {
                   setTasks={setTasks} 
                   autoBreakEnabled={autoBreakEnabled}
                   breakMinutes={breakMinutes}
+                  isDebugMode={isDebugMode}
                 />
               </div>
               
               <div style={{ display: activeTab === 'pomodoro' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
-                <Pomodoro ttsProvider={ttsProvider} volume={volume} preNotifyMinutes={preNotifyMinutes} templates={templates} />
+                <Pomodoro 
+                  ttsProvider={ttsProvider} 
+                  volume={volume} 
+                  preNotifyMinutes={preNotifyMinutes} 
+                  templates={templates} 
+                  isDebugMode={isDebugMode}
+                  autoCycleEnabled={pomodoroAutoCycle}
+                  setAutoCycleEnabled={setPomodoroAutoCycle}
+                  targetCycles={pomodoroTargetCycles}
+                  setTargetCycles={setPomodoroTargetCycles}
+                />
               </div>
               
               <div style={{ display: activeTab === 'settings' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
@@ -256,6 +288,9 @@ export function App() {
                   preBreakNotifyMinutes={preBreakNotifyMinutes} setPreBreakNotifyMinutes={setPreBreakNotifyMinutes}
                   templates={templates} setTemplates={setTemplates}
                   onResetTemplates={handleResetTemplates}
+                  isDebugMode={isDebugMode} setIsDebugMode={setIsDebugMode}
+                  pomodoroAutoCycle={pomodoroAutoCycle} setPomodoroAutoCycle={setPomodoroAutoCycle}
+                  pomodoroTargetCycles={pomodoroTargetCycles} setPomodoroTargetCycles={setPomodoroTargetCycles}
                 />
               </div>
             </div>

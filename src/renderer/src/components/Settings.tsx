@@ -29,6 +29,12 @@ interface SettingsProps {
   templates: AnnounceTemplates
   setTemplates: (val: AnnounceTemplates) => void
   onResetTemplates?: () => void
+  isDebugMode: boolean
+  setIsDebugMode: (val: boolean) => void
+  pomodoroAutoCycle: boolean
+  setPomodoroAutoCycle: (val: boolean) => void
+  pomodoroTargetCycles: number
+  setPomodoroTargetCycles: (val: number) => void
 }
 
 export function Settings({
@@ -43,12 +49,19 @@ export function Settings({
   breakMinutes, setBreakMinutes,
   preBreakNotifyMinutes, setPreBreakNotifyMinutes,
   templates, setTemplates,
-  onResetTemplates
+  onResetTemplates,
+  isDebugMode, setIsDebugMode,
+  pomodoroAutoCycle, setPomodoroAutoCycle,
+  pomodoroTargetCycles, setPomodoroTargetCycles
 }: SettingsProps) {
 
   const handleTestPlay = () => {
+    const testText = ttsProvider === 'voicevox_3' 
+      ? 'これは音声通知のテストなのだ。音量と声質を確認するのだ！' 
+      : 'これはテスト再生です。音量と声質を確認してください。'
+      
     playNotification(
-      'これはテスト再生です。音量と声質を確認してください。', 
+      testText, 
       ttsProvider, 
       volume, 
       {
@@ -69,6 +82,7 @@ export function Settings({
           <Tabs.Tab value="audio" fw={600}>🎵 音声・発話</Tabs.Tab>
           <Tabs.Tab value="timer" fw={600}>⏱️ タイマー・休憩</Tabs.Tab>
           <Tabs.Tab value="templates" fw={600}>💬 通知セリフ</Tabs.Tab>
+          <Tabs.Tab value="system" fw={600}>🛠️ システム・デバッグ</Tabs.Tab>
         </Tabs.List>
 
         {/* 1. API・連携設定 */}
@@ -168,7 +182,33 @@ export function Settings({
         {/* 3. タイマー・休憩設定 */}
         <Tabs.Panel value="timer" pl="xl">
           <Stack gap="lg">
-            <Title order={5} c="white" fw={700}>タイマー動作・自動休憩設定</Title>
+            <Title order={5} c="white" fw={700}>ポモドーロタイマー設定</Title>
+
+            <Switch
+              label="ポモドーロ終了時に自動で次のモード（作業/休憩）をスタートする"
+              checked={pomodoroAutoCycle}
+              onChange={(e) => setPomodoroAutoCycle(e.currentTarget.checked)}
+              color="indigo"
+              size="md"
+              styles={{ label: { color: '#ffffff', fontWeight: 600 } }}
+            />
+
+            {pomodoroAutoCycle && (
+              <div>
+                <Text size="sm" fw={700} c="#c1c7d8" mb="xs">自動サイクルの上限セット数 (0 = 無限に繰り返し)</Text>
+                <NumberInput
+                  value={pomodoroTargetCycles}
+                  onChange={(val) => setPomodoroTargetCycles(typeof val === 'number' ? val : 0)}
+                  min={0}
+                  max={99}
+                  styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+                />
+              </div>
+            )}
+
+            <Divider color="rgba(255,255,255,0.08)" />
+
+            <Title order={5} c="white" fw={700}>スケジューラ自動小休憩設定</Title>
 
             <Switch
               label="タスク終了後に自動で小休憩を差し込む"
@@ -306,6 +346,25 @@ export function Settings({
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
             </div>
+          </Stack>
+        </Tabs.Panel>
+
+        {/* 5. システム・デバッグ設定 */}
+        <Tabs.Panel value="system" pl="xl">
+          <Stack gap="lg">
+            <Title order={5} c="white" fw={700}>開発・デバッグ機能の表示切り替え</Title>
+            <Text size="xs" c="#828a9e">
+              「🐞 デバッグスキップ」パネル（タイマーの早送り・巻き戻しボタン）をアプリ上に表示するかどうかを設定します。完成時はOFFにしてください。
+            </Text>
+
+            <Switch
+              label="デバッグ機能を画面に表示する"
+              checked={isDebugMode}
+              onChange={(e) => setIsDebugMode(e.currentTarget.checked)}
+              color="indigo"
+              size="md"
+              styles={{ label: { color: '#ffffff', fontWeight: 600 } }}
+            />
           </Stack>
         </Tabs.Panel>
       </Tabs>

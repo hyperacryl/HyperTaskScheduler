@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
-import { Card, Title, Button, Textarea, Stack, Text, Group, TextInput, ActionIcon, Switch } from '@mantine/core'
+import { useState, useEffect, useRef } from 'react'
+import { Card, Title, Button, Textarea, Stack, Text, Group, TextInput, ActionIcon, Switch, Badge } from '@mantine/core'
 import { generateSchedule } from '../services/aiService'
 import { Task, AnnounceTemplates } from '../types'
-import { TtsProvider } from '../services/audioService'
+import { playNotification, TtsProvider } from '../services/audioService'
 import { useScheduleMonitor } from '../hooks/useScheduleMonitor'
 import { applyAutoBreaks } from '../utils/taskUtils'
 
@@ -16,6 +16,7 @@ interface SchedulerProps {
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>
   autoBreakEnabled?: boolean
   breakMinutes?: number
+  isDebugMode?: boolean
 }
 
 export function Scheduler({
@@ -27,15 +28,19 @@ export function Scheduler({
   tasks,
   setTasks,
   autoBreakEnabled = true,
-  breakMinutes = 5
+  breakMinutes = 5,
+  isDebugMode = false
 }: SchedulerProps) {
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 仮想時間オフセット (デバッグ検証用, ms)
+  // 仮想時間オフセット (デバッグ用)
   const [timeOffset, setTimeOffset] = useState<number>(0)
   const [virtualClockStr, setVirtualClockStr] = useState<string>('')
+
+  // 全タスク完了の通知済みフラグ
+  const allCompletedNotifiedRef = useRef<boolean>(false)
 
   // 開始時刻設定 (HH:mm)
   const [baseTime, setBaseTime] = useState(() => {
@@ -57,16 +62,28 @@ export function Scheduler({
     return () => clearInterval(interval)
   }, [timeOffset])
 
-  // リアルタイムタイマー監視フック (timeOffset も正確に渡します)
+  // タイマー監視フック
   useScheduleMonitor(tasks, ttsProvider, volume, preNotifyMinutes, timeOffset, templates)
 
-  // 開始時刻コントロール
-  const setBaseTimeToNow = () => {
-    const vNow = new Date(Date.now() + timeOffset)
-    const h = vNow.getHours().toString().padStart(2, '0')
-    const m = vNow.getMinutes().toString().padStart(2, '0')
-    setBaseTime(`${h}:${m}`)
-  }
+  // 全タスク完了検知
+  useEffect(() => {
+    if (tasks.length === 0) {
+      allCompletedNotifiedRef.current = false
+      return
+    }
+
+    const isAllDone = tasks.every((t) => t.completed)
+    if (isAllDone && !allCompletedNotifiedRef.current) {
+      allCompletedNotifiedRef.current = true
+      const text =
+        ttsProvider === 'voicevox_3'
+          ? '本日のタスクがすべて終了したのだ！お疲れ様だったのだ！'
+          : templates.allCompleted || '本日のタスクがすべて終了しました。お疲れ様でした！'
+      playNotification(text, ttsProvider, volume)
+    } else if (!isAllDone) {
+      allCompletedNotifiedRef.current = false
+    }
+  }, [tasks, ttsProvider, volume, templates])
 
   const addMinutesToBaseTime = (minutes: number) => {
     const [h, m] = baseTime.split(':').map(Number)
@@ -77,7 +94,7 @@ export function Scheduler({
     setBaseTime(`${resH}:${resM}`)
   }
 
-  // AIスケジュール生成 (Ctrl+Enter 対応)
+  // AIスケジュール生成
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) return
     setLoading(true)
@@ -87,6 +104,7 @@ export function Scheduler({
       const generated = await generateSchedule(prompt, apiKey, baseTime)
       const withBreaks = applyAutoBreaks(generated, autoBreakEnabled, breakMinutes)
       setTasks(withBreaks)
+      allCompletedNotifiedRef.current = false
     } catch (err: any) {
       setError(err.message || 'スケジュールの生成に失敗しました。')
     } finally {
@@ -112,11 +130,14 @@ export function Scheduler({
     )
   }
 
+  // 現在実行中のタスク判定 (ハイライト用)
+  const nowHHMM = virtualClockStr ? virtualClockStr.substring(0, 5) : ''
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
-      {/* 左パネル: APP CLOCK, GENERATOR, 🐛デバッグ微調整 */}
+      {/* 左パネル: APP CLOCK, GENERATOR, デバッグスキップ */}
       <Stack gap="md" style={{ overflowY: 'auto' }}>
-        {/* 1. APP CLOCK */}
+        {/* 1. APP CLOCK (現在時刻ボタンを削除) */}
         <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
           <Text size="10px" fw={700} c="#828a9e" style={{ letterSpacing: '0.05em' }}>APP CLOCK</Text>
           <Text fw={900} style={{ fontSize: '36px', color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }} my="xs">
@@ -124,19 +145,14 @@ export function Scheduler({
           </Text>
 
           <Group justify="space-between" align="center" mb="xs">
-            <Text size="xs" fw={700} c="#c1c7d8">開始時刻:</Text>
-            <Group gap="xs">
-              <TextInput
-                type="time"
-                value={baseTime}
-                onChange={(e) => setBaseTime(e.target.value)}
-                size="xs"
-                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', width: '90px' } }}
-              />
-              <Button size="xs" variant="subtle" color="indigo" onClick={setBaseTimeToNow} style={{ height: '30px' }}>
-                現在時刻
-              </Button>
-            </Group>
+            <Text size="xs" fw={700} c="#c1c7d8">基準開始時刻:</Text>
+            <TextInput
+              type="time"
+              value={baseTime}
+              onChange={(e) => setBaseTime(e.target.value)}
+              size="xs"
+              styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', width: '100px' } }}
+            />
           </Group>
 
           <Group gap="4px">
@@ -175,20 +191,22 @@ export function Scheduler({
           </Button>
         </Card>
 
-        {/* 3. デバッグ微調整 */}
-        <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
-          <Text size="xs" fw={700} c="#c1c7d8" mb="xs">🐛 デバッグ微調整</Text>
-          <Group gap="4px" mb="xs">
-            <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev - 10000)} style={{ flex: 1, height: '26px', padding: 0 }}>-10秒</Button>
-            <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 10000)} style={{ flex: 1, height: '26px', padding: 0 }}>+10秒</Button>
-            <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 60000)} style={{ flex: 1, height: '26px', padding: 0 }}>+1分</Button>
-            <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev - 60000)} style={{ flex: 1, height: '26px', padding: 0 }}>-1分</Button>
-            <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 300000)} style={{ flex: 1, height: '26px', padding: 0 }}>+5分</Button>
-          </Group>
-          <Button size="xs" variant="subtle" color="gray" fullWidth onClick={() => setTimeOffset(0)}>
-            現実時間に戻す
-          </Button>
-        </Card>
+        {/* 3. デバッグスキップ (isDebugModeが有効時のみ表示) */}
+        {isDebugMode && (
+          <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
+            <Text size="xs" fw={700} c="#c1c7d8" mb="xs">🐞 デバッグスキップ</Text>
+            <Group gap="4px" mb="xs">
+              <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev - 10000)} style={{ flex: 1, height: '26px', padding: 0 }}>-10秒</Button>
+              <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 10000)} style={{ flex: 1, height: '26px', padding: 0 }}>+10秒</Button>
+              <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 60000)} style={{ flex: 1, height: '26px', padding: 0 }}>+1分</Button>
+              <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev - 60000)} style={{ flex: 1, height: '26px', padding: 0 }}>-1分</Button>
+              <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 300000)} style={{ flex: 1, height: '26px', padding: 0 }}>+5分</Button>
+            </Group>
+            <Button size="xs" variant="subtle" color="gray" fullWidth onClick={() => setTimeOffset(0)}>
+              現実時間に戻す
+            </Button>
+          </Card>
+        )}
       </Stack>
 
       {/* 右パネル: TIMELINE タイムスケジュール */}
@@ -203,41 +221,63 @@ export function Scheduler({
                 左のフォームからタスクを入力して生成してください
               </Text>
             ) : (
-              tasks.map((task) => (
-                <Card
-                  key={task.id}
-                  padding="sm"
-                  styles={{
-                    root: {
-                      backgroundColor: task.isBreak ? 'rgba(99, 102, 241, 0.08)' : '#21253a',
-                      borderColor: task.isBreak ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                      opacity: task.completed ? 0.5 : 1
-                    }
-                  }}
-                >
-                  <Group justify="space-between" align="center">
-                    <Group gap="sm">
-                      <Switch
-                        checked={task.completed}
-                        onChange={() => handleToggleTask(task.id)}
-                        color="indigo"
-                      />
-                      <div>
-                        <Text size="sm" fw={700} c={task.isBreak ? '#818cf8' : 'white'} style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
-                          {task.title}
-                        </Text>
-                        <Text size="xs" c="#828a9e">
-                          {task.startTime} - {task.endTime} ({task.estimatedMinutes}分)
-                        </Text>
-                      </div>
-                    </Group>
+              tasks.map((task) => {
+                const isActive = !task.completed && task.startTime <= nowHHMM && nowHHMM < task.endTime
 
-                    <ActionIcon variant="subtle" color="red" size="sm" onClick={() => handleDeleteTask(task.id)}>
-                      ✕
-                    </ActionIcon>
-                  </Group>
-                </Card>
-              ))
+                return (
+                  <Card
+                    key={task.id}
+                    padding="sm"
+                    styles={{
+                      root: {
+                        backgroundColor: isActive
+                          ? 'rgba(99, 102, 241, 0.18)'
+                          : task.isBreak
+                          ? 'rgba(16, 185, 129, 0.08)'
+                          : '#21253a',
+                        borderColor: isActive
+                          ? '#818cf8'
+                          : task.isBreak
+                          ? 'rgba(16, 185, 129, 0.2)'
+                          : 'rgba(255, 255, 255, 0.05)',
+                        borderWidth: isActive ? '2px' : '1px',
+                        boxShadow: isActive ? '0 0 16px rgba(129, 140, 248, 0.45)' : 'none',
+                        opacity: task.completed ? 0.4 : 1,
+                        transition: 'all 0.25s ease'
+                      }
+                    }}
+                  >
+                    <Group justify="space-between" align="center">
+                      <Group gap="sm">
+                        <Switch
+                          checked={task.completed}
+                          onChange={() => handleToggleTask(task.id)}
+                          color="indigo"
+                        />
+                        <div>
+                          <Group gap="xs" align="center">
+                            <Text size="sm" fw={700} c={isActive ? '#a5b4fc' : task.isBreak ? '#34d399' : 'white'} style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
+                              {task.title}
+                            </Text>
+                            {isActive && (
+                              <Badge size="xs" variant="gradient" gradient={{ from: 'indigo', to: 'violet' }}>
+                                実行中
+                              </Badge>
+                            )}
+                          </Group>
+                          <Text size="xs" c="#828a9e">
+                            {task.startTime} - {task.endTime} ({task.estimatedMinutes}分)
+                          </Text>
+                        </div>
+                      </Group>
+
+                      <ActionIcon variant="subtle" color="red" size="sm" onClick={() => handleDeleteTask(task.id)}>
+                        ✕
+                      </ActionIcon>
+                    </Group>
+                  </Card>
+                )
+              })
             )}
           </Stack>
         </div>
