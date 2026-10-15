@@ -17,6 +17,7 @@ interface SchedulerProps {
   autoBreakEnabled?: boolean
   breakMinutes?: number
   isDebugMode?: boolean
+  autoCompleteTask?: boolean
 }
 
 export function Scheduler({
@@ -29,43 +30,55 @@ export function Scheduler({
   setTasks,
   autoBreakEnabled = true,
   breakMinutes = 5,
-  isDebugMode = false
+  isDebugMode = false,
+  autoCompleteTask = false
 }: SchedulerProps) {
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // 仮想時間オフセット (デバッグ用)
   const [timeOffset, setTimeOffset] = useState<number>(0)
   const [virtualClockStr, setVirtualClockStr] = useState<string>('')
-
-  // 全タスク完了の通知済みフラグ
+  const [isBaseTimeCustomized, setIsBaseTimeCustomized] = useState(false)
   const allCompletedNotifiedRef = useRef<boolean>(false)
+  const [baseTime, setBaseTime] = useState('')
 
-  // 開始時刻設定 (HH:mm)
-  const [baseTime, setBaseTime] = useState(() => {
-    const now = new Date()
-    return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-  })
-
-  // 仮想時刻の毎秒更新
   useEffect(() => {
     const updateClock = () => {
       const vNow = new Date(Date.now() + timeOffset)
       const h = vNow.getHours().toString().padStart(2, '0')
       const m = vNow.getMinutes().toString().padStart(2, '0')
       const s = vNow.getSeconds().toString().padStart(2, '0')
-      setVirtualClockStr(`${h}:${m}:${s}`)
+      const currentHHMMSS = `${h}:${m}:${s}`
+      setVirtualClockStr(currentHHMMSS)
+
+      if (!isBaseTimeCustomized) {
+        setBaseTime(`${h}:${m}`)
+      }
     }
     updateClock()
     const interval = setInterval(updateClock, 1000)
     return () => clearInterval(interval)
-  }, [timeOffset])
+  }, [timeOffset, isBaseTimeCustomized])
 
-  // タイマー監視フック
-  useScheduleMonitor(tasks, ttsProvider, volume, preNotifyMinutes, timeOffset, templates)
+  const handleAutoTaskComplete = (id: string) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completed: true } : t))
+    )
+  }
 
-  // 全タスク完了検知
+  useScheduleMonitor(
+    tasks,
+    ttsProvider,
+    volume,
+    preNotifyMinutes,
+    timeOffset,
+    templates,
+    autoCompleteTask,
+    handleAutoTaskComplete
+  )
+
+  // 全タスク完了検知（直書き分岐を撤廃し、設定テンプレートを100%参照）
   useEffect(() => {
     if (tasks.length === 0) {
       allCompletedNotifiedRef.current = false
@@ -75,10 +88,7 @@ export function Scheduler({
     const isAllDone = tasks.every((t) => t.completed)
     if (isAllDone && !allCompletedNotifiedRef.current) {
       allCompletedNotifiedRef.current = true
-      const text =
-        ttsProvider === 'voicevox_3'
-          ? '本日のタスクがすべて終了したのだ！お疲れ様だったのだ！'
-          : templates.allCompleted || '本日のタスクがすべて終了しました。お疲れ様でした！'
+      const text = templates.allCompleted || '本日のタスクがすべて終了しました。お疲れ様でした。'
       playNotification(text, ttsProvider, volume)
     } else if (!isAllDone) {
       allCompletedNotifiedRef.current = false
@@ -86,7 +96,8 @@ export function Scheduler({
   }, [tasks, ttsProvider, volume, templates])
 
   const addMinutesToBaseTime = (minutes: number) => {
-    const [h, m] = baseTime.split(':').map(Number)
+    setIsBaseTimeCustomized(true)
+    const [h, m] = (baseTime || '00:00').split(':').map(Number)
     const d = new Date()
     d.setHours(h, m + minutes, 0, 0)
     const resH = d.getHours().toString().padStart(2, '0')
@@ -94,21 +105,110 @@ export function Scheduler({
     setBaseTime(`${resH}:${resM}`)
   }
 
-  // AIスケジュール生成
   const handleGenerate = async () => {
     if (!prompt.trim() || loading) return
     setLoading(true)
     setError(null)
 
+    const vNow = new Date(Date.now() + timeOffset)
+    const curH = vNow.getHours().toString().padStart(2, '0')
+    const curM = vNow.getMinutes().toString().padStart(2, '0')
+    const effectiveBaseTime = isBaseTimeCustomized ? baseTime : `${curH}:${curM}`
+
     try {
-      const generated = await generateSchedule(prompt, apiKey, baseTime)
+      const generated = await generateSchedule(prompt, apiKey, effectiveBaseTime)
       const withBreaks = applyAutoBreaks(generated, autoBreakEnabled, breakMinutes)
       setTasks(withBreaks)
       allCompletedNotifiedRef.current = false
+      setIsBaseTimeCustomized(false)
     } catch (err: any) {
       setError(err.message || 'スケジュールの生成に失敗しました。')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSetTestSchedule = () => {
+    const vNow = new Date(Date.now() + timeOffset)
+    const curH = vNow.getHours().toString().padStart(2, '0')
+    const curM = vNow.getMinutes().toString().padStart(2, '0')
+    const startHHMM = `${curH}:${curM}`
+
+    const addMins = (hhmm: string, mins: number) => {
+      const [h, m] = hhmm.split(':').map(Number)
+      const d = new Date()
+      d.setHours(h, m + mins, 0, 0)
+      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    }
+
+    const t1End = addMins(startHHMM, 2)
+    const t2End = addMins(t1End, 2)
+
+    const rawTestTasks: Task[] = [
+      {
+        id: `test-${Date.now()}-1`,
+        title: '🧪 テスト作業1 (資料確認)',
+        startTime: startHHMM,
+        endTime: t1End,
+        estimatedMinutes: 2,
+        completed: false,
+        isBreak: false
+      },
+      {
+        id: `test-${Date.now()}-2`,
+        title: '🧪 テスト作業2 (メール返信)',
+        startTime: t1End,
+        endTime: t2End,
+        estimatedMinutes: 2,
+        completed: false,
+        isBreak: false
+      }
+    ]
+
+    const withBreaks = applyAutoBreaks(rawTestTasks, autoBreakEnabled, breakMinutes)
+    setTasks(withBreaks)
+    allCompletedNotifiedRef.current = false
+    setIsBaseTimeCustomized(false)
+  }
+
+  const handleJumpToNextNotification = () => {
+    if (tasks.length === 0) return
+    const vNow = new Date(Date.now() + timeOffset)
+
+    const parseTime = (timeStr: string): number => {
+      const [h, m] = timeStr.split(':').map(Number)
+      const d = new Date(vNow.getFullYear(), vNow.getMonth(), vNow.getDate(), h, m, 0, 0)
+      return d.getTime()
+    }
+
+    const virtualNowMs = vNow.getTime()
+    const candidates: number[] = []
+
+    tasks.forEach((task) => {
+      if (task.completed || !task.startTime || !task.endTime) return
+      const startMs = parseTime(task.startTime)
+      let endMs = parseTime(task.endTime)
+      if (endMs < startMs) endMs += 24 * 60 * 60 * 1000
+
+      const isBreak = Boolean(task.isBreak) || task.title.includes('休憩') || task.title.toLowerCase().includes('break')
+
+      candidates.push(startMs - 5000)
+
+      if (!isBreak && preNotifyMinutes > 0 && task.estimatedMinutes > preNotifyMinutes) {
+        candidates.push(endMs - preNotifyMinutes * 60000 - 5000)
+      }
+
+      candidates.push(endMs - 5000)
+    })
+
+    const futureCandidates = candidates
+      .filter((t) => t > virtualNowMs + 1000)
+      .sort((a, b) => a - b)
+
+    if (futureCandidates.length > 0) {
+      const nextTarget = futureCandidates[0]
+      const newOffset = (nextTarget - 2000) - Date.now()
+      setTimeOffset(newOffset)
     }
   }
 
@@ -130,14 +230,13 @@ export function Scheduler({
     )
   }
 
-  // 現在実行中のタスク判定 (ハイライト用)
   const nowHHMM = virtualClockStr ? virtualClockStr.substring(0, 5) : ''
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
       {/* 左パネル: APP CLOCK, GENERATOR, デバッグスキップ */}
       <Stack gap="md" style={{ overflowY: 'auto' }}>
-        {/* 1. APP CLOCK (現在時刻ボタンを削除) */}
+        {/* 1. APP CLOCK */}
         <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
           <Text size="10px" fw={700} c="#828a9e" style={{ letterSpacing: '0.05em' }}>APP CLOCK</Text>
           <Text fw={900} style={{ fontSize: '36px', color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }} my="xs">
@@ -149,7 +248,10 @@ export function Scheduler({
             <TextInput
               type="time"
               value={baseTime}
-              onChange={(e) => setBaseTime(e.target.value)}
+              onChange={(e) => {
+                setIsBaseTimeCustomized(true)
+                setBaseTime(e.target.value)
+              }}
               size="xs"
               styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', width: '100px' } }}
             />
@@ -185,13 +287,26 @@ export function Scheduler({
             loading={loading}
             fullWidth
             radius="md"
+            mb="xs"
             style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)', fontWeight: 700 }}
           >
             ✨ スケジュールを自動生成 (Ctrl+Enter)
           </Button>
+
+          <Button
+            onClick={handleSetTestSchedule}
+            variant="outline"
+            color="indigo"
+            fullWidth
+            radius="md"
+            size="xs"
+            styles={{ root: { borderColor: 'rgba(99, 102, 241, 0.4)', color: '#a5b4fc' } }}
+          >
+            ⚡ 検証用テストタスクを即時セット (2分×2件)
+          </Button>
         </Card>
 
-        {/* 3. デバッグスキップ (isDebugModeが有効時のみ表示) */}
+        {/* 3. デバッグスキップ */}
         {isDebugMode && (
           <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
             <Text size="xs" fw={700} c="#c1c7d8" mb="xs">🐞 デバッグスキップ</Text>
@@ -202,6 +317,19 @@ export function Scheduler({
               <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev - 60000)} style={{ flex: 1, height: '26px', padding: 0 }}>-1分</Button>
               <Button size="xs" variant="light" color="gray" onClick={() => setTimeOffset((prev) => prev + 300000)} style={{ flex: 1, height: '26px', padding: 0 }}>+5分</Button>
             </Group>
+
+            <Button
+              size="xs"
+              variant="light"
+              color="indigo"
+              fullWidth
+              mb="xs"
+              onClick={handleJumpToNextNotification}
+              disabled={tasks.length === 0}
+            >
+              ⏩ 次の通知へジャンプ (2秒前へ)
+            </Button>
+
             <Button size="xs" variant="subtle" color="gray" fullWidth onClick={() => setTimeOffset(0)}>
               現実時間に戻す
             </Button>

@@ -10,13 +10,24 @@ import { MiniTimer } from './components/MiniTimer'
 import { usePomodoro } from './hooks/usePomodoro'
 import { Task, AnnounceTemplates } from './types'
 
-export const defaultTemplates: AnnounceTemplates = {
-  taskStart: '{title} を開始します。集中していきましょう！',
-  taskPreEnd: '{title} 終了まであと {minutes} 分です。',
-  taskEnd: '{title} が終了しました。お疲れ様でした。',
-  breakStart: '休憩時間です。しっかりリフレッシュしましょう。',
-  breakPreEnd: 'まもなく休憩が終了します。次は {nextTitle} です。',
-  allCompleted: '本日のタスクがすべて終了しました。お疲れ様でした！'
+// A: 標準・実用向けデフォルト
+export const defaultStandardTemplates: AnnounceTemplates = {
+  taskStart: '{title} の開始時刻になりました。',
+  taskPreEnd: '終了まであと {minutes} 分です。仕上げに入りましょう。',
+  taskEnd: '{title} の終了時刻です。',
+  breakStart: '{minutes} 分間の休憩です。作業を止めてリフレッシュしてください。',
+  breakPreEnd: 'まもなく休憩が終了します。次のタスクの準備をしましょう。',
+  allCompleted: '本日のタスクがすべて終了しました。お疲れ様でした。'
+}
+
+// B: ずんだもん・キャラクター向けデフォルト
+export const defaultZundamonTemplates: AnnounceTemplates = {
+  taskStart: '{title} の時間なのだ。張り切っていくのだ！',
+  taskPreEnd: '{title} 終了まであと {minutes} 分なのだ。キリのいいところでまとめるのだ。',
+  taskEnd: '{title} の終了時刻なのだ。ひとまず作業完了なのだ。',
+  breakStart: '{minutes} 分間の休憩時間なのだ。しっかり休むのだ。',
+  breakPreEnd: 'まもなく休憩終了なのだ。',
+  allCompleted: '予定していたタスクがすべて終わったのだ！お疲れ様なのだ！'
 }
 
 const customTheme = createTheme({
@@ -78,6 +89,12 @@ export function App() {
     return saved !== null ? saved === 'true' : true
   })
 
+  // タスク自動完了設定
+  const [autoCompleteTask, setAutoCompleteTask] = useState<boolean>(() => {
+    const saved = localStorage.getItem('ht_auto_complete_enabled')
+    return saved !== null ? saved === 'true' : false
+  })
+
   // ポモドーロの自動サイクル設定
   const [pomodoroAutoCycle, setPomodoroAutoCycle] = useState<boolean>(() => {
     const saved = localStorage.getItem('ht_pomo_auto_cycle')
@@ -89,17 +106,24 @@ export function App() {
     return saved ? parseInt(saved, 10) : 0
   })
 
-  const [templates, setTemplates] = useState<AnnounceTemplates>(() => {
-    const saved = localStorage.getItem('ht_announce_templates')
-    if (!saved) return defaultTemplates
+  // 2種類のセリフセットを独立保持
+  const [standardTemplates, setStandardTemplates] = useState<AnnounceTemplates>(() => {
+    const saved = localStorage.getItem('ht_announce_templates_standard')
+    if (!saved) return defaultStandardTemplates
     try {
-      const parsed = JSON.parse(saved)
-      if (parsed.taskPreNotify || parsed.taskEnd?.includes('次のタスクへ移りましょう') || parsed.taskStart?.includes('始めましょう。')) {
-        return defaultTemplates
-      }
-      return { ...defaultTemplates, ...parsed }
+      return { ...defaultStandardTemplates, ...JSON.parse(saved) }
     } catch {
-      return defaultTemplates
+      return defaultStandardTemplates
+    }
+  })
+
+  const [zundamonTemplates, setZundamonTemplates] = useState<AnnounceTemplates>(() => {
+    const saved = localStorage.getItem('ht_announce_templates_zundamon')
+    if (!saved) return defaultZundamonTemplates
+    try {
+      return { ...defaultZundamonTemplates, ...JSON.parse(saved) }
+    } catch {
+      return defaultZundamonTemplates
     }
   })
 
@@ -130,6 +154,7 @@ export function App() {
   useEffect(() => { localStorage.setItem('ht_google_pitch', googlePitch.toString()) }, [googlePitch])
   useEffect(() => { localStorage.setItem('ht_tts_provider', ttsProvider) }, [ttsProvider])
   useEffect(() => { localStorage.setItem('ht_is_debug', isDebugMode.toString()) }, [isDebugMode])
+  useEffect(() => { localStorage.setItem('ht_auto_complete_enabled', autoCompleteTask.toString()) }, [autoCompleteTask])
   useEffect(() => { localStorage.setItem('ht_pomo_auto_cycle', pomodoroAutoCycle.toString()) }, [pomodoroAutoCycle])
   useEffect(() => { localStorage.setItem('ht_pomo_target_cycles', pomodoroTargetCycles.toString()) }, [pomodoroTargetCycles])
 
@@ -142,7 +167,14 @@ export function App() {
   useEffect(() => { localStorage.setItem('ht_auto_break_enabled', autoBreakEnabled.toString()) }, [autoBreakEnabled])
   useEffect(() => { localStorage.setItem('ht_break_minutes', breakMinutes.toString()) }, [breakMinutes])
   useEffect(() => { localStorage.setItem('ht_pre_break_notify_minutes', preBreakNotifyMinutes.toString()) }, [preBreakNotifyMinutes])
-  useEffect(() => { localStorage.setItem('ht_announce_templates', JSON.stringify(templates)) }, [templates])
+
+  useEffect(() => {
+    localStorage.setItem('ht_announce_templates_standard', JSON.stringify(standardTemplates))
+  }, [standardTemplates])
+
+  useEffect(() => {
+    localStorage.setItem('ht_announce_templates_zundamon', JSON.stringify(zundamonTemplates))
+  }, [zundamonTemplates])
 
   useEffect(() => {
     setTtsOptions({
@@ -152,9 +184,9 @@ export function App() {
     })
   }, [googleTtsApiKey, googleVoiceName, googlePitch])
 
-  const handleResetTemplates = () => {
-    setTemplates(defaultTemplates)
-  }
+  // プロバイダーに応じて適用するセリフセットを自動判定
+  const isZundamonProvider = ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest'
+  const activeTemplates = isZundamonProvider ? zundamonTemplates : standardTemplates
 
   const currentTaskTitle = (() => {
     if (!virtualTimeStr || tasks.length === 0) return '予定なし'
@@ -251,12 +283,13 @@ export function App() {
                   ttsProvider={ttsProvider} 
                   volume={volume} 
                   preNotifyMinutes={preNotifyMinutes} 
-                  templates={templates} 
+                  templates={activeTemplates} 
                   tasks={tasks} 
                   setTasks={setTasks} 
                   autoBreakEnabled={autoBreakEnabled}
                   breakMinutes={breakMinutes}
                   isDebugMode={isDebugMode}
+                  autoCompleteTask={autoCompleteTask}
                 />
               </div>
               
@@ -265,12 +298,14 @@ export function App() {
                   ttsProvider={ttsProvider} 
                   volume={volume} 
                   preNotifyMinutes={preNotifyMinutes} 
-                  templates={templates} 
+                  templates={activeTemplates} 
                   isDebugMode={isDebugMode}
                   autoCycleEnabled={pomodoroAutoCycle}
                   setAutoCycleEnabled={setPomodoroAutoCycle}
                   targetCycles={pomodoroTargetCycles}
                   setTargetCycles={setPomodoroTargetCycles}
+                  tasks={tasks}
+                  setTasks={setTasks}
                 />
               </div>
               
@@ -286,8 +321,11 @@ export function App() {
                   autoBreakEnabled={autoBreakEnabled} setAutoBreakEnabled={setAutoBreakEnabled}
                   breakMinutes={breakMinutes} setBreakMinutes={setBreakMinutes}
                   preBreakNotifyMinutes={preBreakNotifyMinutes} setPreBreakNotifyMinutes={setPreBreakNotifyMinutes}
-                  templates={templates} setTemplates={setTemplates}
-                  onResetTemplates={handleResetTemplates}
+                  autoCompleteTask={autoCompleteTask} setAutoCompleteTask={setAutoCompleteTask}
+                  standardTemplates={standardTemplates} setStandardTemplates={setStandardTemplates}
+                  zundamonTemplates={zundamonTemplates} setZundamonTemplates={setZundamonTemplates}
+                  onResetStandardTemplates={() => setStandardTemplates(defaultStandardTemplates)}
+                  onResetZundamonTemplates={() => setZundamonTemplates(defaultZundamonTemplates)}
                   isDebugMode={isDebugMode} setIsDebugMode={setIsDebugMode}
                   pomodoroAutoCycle={pomodoroAutoCycle} setPomodoroAutoCycle={setPomodoroAutoCycle}
                   pomodoroTargetCycles={pomodoroTargetCycles} setPomodoroTargetCycles={setPomodoroTargetCycles}

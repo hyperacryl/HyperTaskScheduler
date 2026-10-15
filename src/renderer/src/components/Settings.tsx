@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { 
   Stack, Card, Text, Title, Select, Slider, Button, 
-  NumberInput, Divider, PasswordInput, TextInput, Switch, Tabs, Flex 
+  NumberInput, Divider, PasswordInput, TextInput, Switch, Tabs, Flex,
+  SegmentedControl, Group, Badge
 } from '@mantine/core'
 import { playNotification, TtsProvider } from '../services/audioService'
 import { AnnounceTemplates } from '../types'
@@ -26,9 +28,14 @@ interface SettingsProps {
   setBreakMinutes: (val: number) => void
   preBreakNotifyMinutes: number
   setPreBreakNotifyMinutes: (val: number) => void
-  templates: AnnounceTemplates
-  setTemplates: (val: AnnounceTemplates) => void
-  onResetTemplates?: () => void
+  autoCompleteTask: boolean
+  setAutoCompleteTask: (val: boolean) => void
+  standardTemplates: AnnounceTemplates
+  setStandardTemplates: (val: AnnounceTemplates) => void
+  zundamonTemplates: AnnounceTemplates
+  setZundamonTemplates: (val: AnnounceTemplates) => void
+  onResetStandardTemplates: () => void
+  onResetZundamonTemplates: () => void
   isDebugMode: boolean
   setIsDebugMode: (val: boolean) => void
   pomodoroAutoCycle: boolean
@@ -48,28 +55,58 @@ export function Settings({
   autoBreakEnabled, setAutoBreakEnabled,
   breakMinutes, setBreakMinutes,
   preBreakNotifyMinutes, setPreBreakNotifyMinutes,
-  templates, setTemplates,
-  onResetTemplates,
+  autoCompleteTask, setAutoCompleteTask,
+  standardTemplates, setStandardTemplates,
+  zundamonTemplates, setZundamonTemplates,
+  onResetStandardTemplates,
+  onResetZundamonTemplates,
   isDebugMode, setIsDebugMode,
   pomodoroAutoCycle, setPomodoroAutoCycle,
   pomodoroTargetCycles, setPomodoroTargetCycles
 }: SettingsProps) {
 
-  const handleTestPlay = () => {
-    const testText = ttsProvider === 'voicevox_3' 
+  const [isTesting, setIsTesting] = useState(false)
+
+  // セリフ設定内のサブタブ（標準用 / ずんだもん用）
+  const [templateTab, setTemplateTab] = useState<'standard' | 'zundamon'>(() =>
+    ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest' ? 'zundamon' : 'standard'
+  )
+
+  const handleTestPlay = async () => {
+    if (isTesting) return
+    setIsTesting(true)
+
+    const isZunda = ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest'
+    const testText = isZunda
       ? 'これは音声通知のテストなのだ。音量と声質を確認するのだ！' 
       : 'これはテスト再生です。音量と声質を確認してください。'
       
-    playNotification(
-      testText, 
-      ttsProvider, 
-      volume, 
-      {
-        googleTtsApiKey,
-        googleVoiceName,
-        googlePitch
-      }
-    )
+    try {
+      await playNotification(
+        testText, 
+        ttsProvider, 
+        volume, 
+        {
+          googleTtsApiKey,
+          googleVoiceName,
+          googlePitch
+        }
+      )
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
+  // 現在編集対象のテンプレートとセッター
+  const currentTpl = templateTab === 'standard' ? standardTemplates : zundamonTemplates
+  const setCurrentTpl = templateTab === 'standard' ? setStandardTemplates : setZundamonTemplates
+  const handleResetCurrent = templateTab === 'standard' ? onResetStandardTemplates : onResetZundamonTemplates
+
+  // 変数を入力値の末尾に挿入するヘルパー
+  const handleInsertVar = (field: keyof AnnounceTemplates, varName: string) => {
+    const val = currentTpl[field] || ''
+    const nextVal = val ? `${val} ${varName}` : varName
+    setCurrentTpl({ ...currentTpl, [field]: nextVal })
   }
 
   return (
@@ -173,7 +210,11 @@ export function Settings({
               <Slider value={volume} onChange={setVolume} color="indigo" />
             </div>
             
-            <Button onClick={handleTestPlay} variant="light" color="indigo" radius="md">
+            <Button 
+              onClick={handleTestPlay} 
+              loading={isTesting}
+              variant="light" color="indigo" radius="md"
+            >
               🎵 音声テスト再生
             </Button>
           </Stack>
@@ -233,6 +274,19 @@ export function Settings({
 
             <Divider color="rgba(255,255,255,0.08)" />
 
+            <Title order={5} c="white" fw={700}>タスク自動完了設定</Title>
+
+            <Switch
+              label="終了時刻になったタスクを自動で完了済みにする"
+              checked={autoCompleteTask}
+              onChange={(e) => setAutoCompleteTask(e.currentTarget.checked)}
+              color="indigo"
+              size="md"
+              styles={{ label: { color: '#ffffff', fontWeight: 600 } }}
+            />
+
+            <Divider color="rgba(255,255,255,0.08)" />
+
             <div>
               <Text size="sm" fw={700} c="#c1c7d8" mb="xs">タスク終了前の予告通知 (分前)</Text>
               <NumberInput 
@@ -257,94 +311,172 @@ export function Settings({
           </Stack>
         </Tabs.Panel>
 
-        {/* 4. 通知セリフ設定 */}
+        {/* 4. 通知セリフ設定 (サブタブ切り替え・変数ボタン・プレビュー付き) */}
         <Tabs.Panel value="templates" pl="xl">
           <Stack gap="md">
             <Flex justify="space-between" align="center">
               <Title order={5} c="white" fw={700}>通知セリフのカスタマイズ</Title>
-              {onResetTemplates && (
-                <Button variant="subtle" color="gray" size="xs" onClick={onResetTemplates}>
-                  🔄 デフォルトに戻す
-                </Button>
-              )}
+              <Button variant="subtle" color="gray" size="xs" onClick={handleResetCurrent}>
+                🔄 現在のタブをデフォルトに戻す
+              </Button>
             </Flex>
 
+            {/* サブタブ切替 */}
+            <SegmentedControl
+              value={templateTab}
+              onChange={(val) => setTemplateTab(val as 'standard' | 'zundamon')}
+              data={[
+                { label: '📢 標準ボイス用 (Google / Windows)', value: 'standard' },
+                { label: '🟢 ずんだもん用 (VOICEVOX)', value: 'zundamon' }
+              ]}
+              fullWidth
+              radius="md"
+              styles={{
+                root: { backgroundColor: '#0f111a', border: '1px solid rgba(255,255,255,0.06)', padding: '4px' },
+                indicator: { background: templateTab === 'standard' ? 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' : '#10b981' },
+                label: { color: '#ffffff', fontWeight: 700, fontSize: '0.85rem' }
+              }}
+            />
+
+            <Text size="xs" c="#828a9e">
+              ※ 音声エンジン設定が VOICEVOX のときは「ずんだもん用」、Google/Windows のときは「標準ボイス用」が自動適用されます。
+            </Text>
+
+            {/* 1. タスク開始時 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">1. タスク開始時</Text>
-                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code></Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">1. タスク開始時</Text>
+                  <Badge size="xs" variant="light" color="gray">開始5秒前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('taskStart', '{title}')}>+ タスク名</Button>
+                </Group>
               </Flex>
               <TextInput 
-                value={templates.taskStart || ''} 
-                onChange={(e) => setTemplates({ ...templates, taskStart: e.target.value })}
-                placeholder="例: {title} を開始します。集中していきましょう！"
+                value={currentTpl.taskStart || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, taskStart: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.taskStart || '').replace('{title}', '資料作成')}
+              </Text>
             </div>
 
+            {/* 2. タスク終了前 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">2. タスク終了前</Text>
-                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code>, <code style={{ color: '#818cf8' }}>{'{minutes}'}</code></Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">2. タスク終了前</Text>
+                  <Badge size="xs" variant="light" color="gray">{preNotifyMinutes}分前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('taskPreEnd', '{title}')}>+ タスク名</Button>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('taskPreEnd', '{minutes}')}>+ 残り分数</Button>
+                </Group>
               </Flex>
               <TextInput 
-                value={templates.taskPreEnd || ''} 
-                onChange={(e) => setTemplates({ ...templates, taskPreEnd: e.target.value })}
-                placeholder="例: {title} 終了まであと {minutes} 分です。"
+                value={currentTpl.taskPreEnd || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, taskPreEnd: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.taskPreEnd || '').replace('{title}', '資料作成').replace('{minutes}', preNotifyMinutes.toString())}
+              </Text>
             </div>
 
+            {/* 3. タスク終了時 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">3. タスク終了時</Text>
-                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{title}'}</code></Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">3. タスク終了時</Text>
+                  <Badge size="xs" variant="light" color="gray">終了5秒前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('taskEnd', '{title}')}>+ タスク名</Button>
+                </Group>
               </Flex>
               <TextInput 
-                value={templates.taskEnd || ''} 
-                onChange={(e) => setTemplates({ ...templates, taskEnd: e.target.value })}
-                placeholder="例: {title} が終了しました。お疲れ様でした。"
+                value={currentTpl.taskEnd || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, taskEnd: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.taskEnd || '').replace('{title}', '資料作成')}
+              </Text>
             </div>
 
+            {/* 4. 休憩開始時 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">4. 休憩開始時</Text>
-                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{minutes}'}</code></Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">4. 休憩開始時</Text>
+                  <Badge size="xs" variant="light" color="gray">休憩開始5秒前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('breakStart', '{minutes}')}>+ 休憩分数</Button>
+                </Group>
               </Flex>
               <TextInput 
-                value={templates.breakStart || ''} 
-                onChange={(e) => setTemplates({ ...templates, breakStart: e.target.value })}
-                placeholder="例: 休憩時間です。しっかりリフレッシュしましょう。"
+                value={currentTpl.breakStart || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, breakStart: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.breakStart || '').replace('{minutes}', breakMinutes.toString())}
+              </Text>
             </div>
 
+            {/* 5. 休憩終了前 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">5. 休憩終了前</Text>
-                <Text size="xs" c="#6366f1">使用可能: <code style={{ color: '#818cf8' }}>{'{minutes}'}</code>, <code style={{ color: '#818cf8' }}>{'{nextTitle}'}</code></Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">5. 休憩終了前</Text>
+                  <Badge size="xs" variant="light" color="gray">{preBreakNotifyMinutes}分前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('breakPreEnd', '{minutes}')}>+ 残り分数</Button>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('breakPreEnd', '{nextTitle}')}>+ 次のタスク名</Button>
+                </Group>
               </Flex>
               <TextInput 
-                value={templates.breakPreEnd || ''} 
-                onChange={(e) => setTemplates({ ...templates, breakPreEnd: e.target.value })}
-                placeholder="例: まもなく休憩が終了します。次は {nextTitle} です。"
+                value={currentTpl.breakPreEnd || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, breakPreEnd: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.breakPreEnd || '').replace('{minutes}', preBreakNotifyMinutes.toString()).replace('{nextTitle}', '定例ミーティング')}
+              </Text>
             </div>
 
+            {/* 6. すべてのタスク完了時 */}
             <div>
               <Flex justify="space-between" align="center" mb="4px">
-                <Text size="xs" fw={700} c="#c1c7d8">6. すべてのタスク完了時</Text>
-                <Text size="xs" c="#828a9e">使用可能変数なし</Text>
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">6. すべてのタスク完了時</Text>
+                  <Badge size="xs" variant="light" color="gray">全タスク完了時</Badge>
+                </Group>
+                <Text size="11px" c="#828a9e">使用可能変数なし</Text>
               </Flex>
               <TextInput 
-                value={templates.allCompleted || ''} 
-                onChange={(e) => setTemplates({ ...templates, allCompleted: e.target.value })}
-                placeholder="例: 本日のタスクがすべて終了しました。お疲れ様でした！"
+                value={currentTpl.allCompleted || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, allCompleted: e.target.value })}
+                placeholder="セリフを入力..."
                 styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
               />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {currentTpl.allCompleted || ''}
+              </Text>
             </div>
           </Stack>
         </Tabs.Panel>
@@ -354,7 +486,7 @@ export function Settings({
           <Stack gap="lg">
             <Title order={5} c="white" fw={700}>開発・デバッグ機能の表示切り替え</Title>
             <Text size="xs" c="#828a9e">
-              「🐞 デバッグスキップ」パネル（タイマーの早送り・巻き戻しボタン）をアプリ上に表示するかどうかを設定します。完成時はOFFにしてください。
+              「🐞 デバッグスキップ」パネルをアプリ上に表示するかどうかを設定します。完成時はOFFにしてください。
             </Text>
 
             <Switch

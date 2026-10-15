@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { usePomodoro } from '../hooks/usePomodoro'
 import { TtsProvider } from '../services/audioService'
-import { Card, Text, Title, Button, Group, Flex, SegmentedControl, RingProgress, Center, Switch, NumberInput, Badge } from '@mantine/core'
-import { AnnounceTemplates } from '../types'
+import { Card, Text, Title, Button, Group, Flex, SegmentedControl, RingProgress, Center, Switch, NumberInput, Badge, Modal } from '@mantine/core'
+import { AnnounceTemplates, Task } from '../types'
 
 interface PomodoroProps {
   ttsProvider: TtsProvider
@@ -13,6 +14,8 @@ interface PomodoroProps {
   setAutoCycleEnabled: (val: boolean) => void
   targetCycles: number
   setTargetCycles: (val: number) => void
+  tasks: Task[]
+  setTasks: React.Dispatch<React.SetStateAction<Task[]>>
 }
 
 export function Pomodoro({
@@ -23,8 +26,12 @@ export function Pomodoro({
   autoCycleEnabled,
   setAutoCycleEnabled,
   targetCycles,
-  setTargetCycles
+  setTargetCycles,
+  tasks,
+  setTasks
 }: PomodoroProps) {
+  const [confirmOpened, setConfirmOpened] = useState(false)
+
   const {
     minutes,
     seconds,
@@ -44,12 +51,58 @@ export function Pomodoro({
     targetCycles
   })
 
+  // 未完了タスクが存在する場合、ダイアログを表示
+  const handleStartClick = () => {
+    if (!isRunning && tasks.some((t) => !t.completed)) {
+      setConfirmOpened(true)
+    } else {
+      toggleTimer()
+    }
+  }
+
+  // ダイアログで「破棄して開始」を選んだ時の処理
+  const handleConfirmStart = () => {
+    setConfirmOpened(false)
+    setTasks([])
+    toggleTimer()
+  }
+
   const totalSec = mode === 'work' ? workMinutes * 60 : breakMinutes * 60
   const currentSec = parseInt(minutes, 10) * 60 + parseInt(seconds, 10)
   const progress = (currentSec / totalSec) * 100
 
   return (
     <Flex justify="center" align="center" py="xs" style={{ minHeight: '100%' }}>
+      {/* 破棄確認ダイアログ */}
+      <Modal
+        opened={confirmOpened}
+        onClose={() => setConfirmOpened(false)}
+        title="ポモドーロを開始しますか？"
+        centered
+        styles={{
+          title: { color: 'white', fontWeight: 700 },
+          content: { backgroundColor: '#151828', color: 'white' },
+          header: { backgroundColor: '#151828' }
+        }}
+      >
+        <Text size="sm" mb="lg" c="#c1c7d8">
+          現在スケジューラに未完了のタスクがあります。<br />
+          ポモドーロタイマーを開始すると、現在のスケジューラのタスクはすべて破棄されますがよろしいですか？
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            onClick={() => setConfirmOpened(false)}
+            styles={{ root: { backgroundColor: '#21253a', color: 'white', border: 'none' } }}
+          >
+            キャンセル
+          </Button>
+          <Button color="red" onClick={handleConfirmStart}>
+            破棄して開始
+          </Button>
+        </Group>
+      </Modal>
+
       <Card
         padding="28px"
         w="100%"
@@ -189,7 +242,7 @@ export function Pomodoro({
           <Button
             size="md"
             radius="xl"
-            onClick={toggleTimer}
+            onClick={isRunning ? toggleTimer : handleStartClick}
             styles={{
               root: {
                 background: isRunning

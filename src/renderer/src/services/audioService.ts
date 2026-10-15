@@ -12,7 +12,6 @@ export interface TtsOptions {
   speakerId?: number
 }
 
-// グローバルオプション保持
 let globalTtsOptions: TtsOptions = {}
 
 export function setTtsOptions(options: TtsOptions): void {
@@ -33,11 +32,15 @@ function getAudioContext(): AudioContext {
 }
 
 let currentGainNode: GainNode | null = null
+let currentAudioElement: HTMLAudioElement | null = null
 
 export function setLiveVolume(volume: number): void {
+  const targetVolume = Math.max(0, Math.min(1, volume / 100))
   if (currentGainNode && audioCtx) {
-    const targetVolume = Math.max(0, Math.min(1, volume / 100))
     currentGainNode.gain.setValueAtTime(targetVolume, audioCtx.currentTime)
+  }
+  if (currentAudioElement) {
+    currentAudioElement.volume = targetVolume
   }
 }
 
@@ -70,6 +73,11 @@ async function processQueue(): Promise<void> {
     } finally {
       speechQueue.shift()
       currentTask.resolve()
+      
+      // 次のキュー実行前に1.2秒のインターバルを挟み、429制限を回避
+      if (speechQueue.length > 0) {
+        await new Promise((res) => setTimeout(res, 1200))
+      }
     }
   }
 
@@ -77,13 +85,13 @@ async function processQueue(): Promise<void> {
 }
 
 /**
- * VOICEVOX (TTS Quest) 再生 (404生成待ちリトライ付き)
+ * 内部ヘルパー: VOICEVOX API呼び出し＋ステータス確認ポーリング（404エラー非発生化・低遅延）
  */
-async function playTtsQuest(
+async function attemptPlayTtsQuest(
   text: string,
   volume: number,
-  speakerId: number = 3,
-  apiKey: string = ''
+  speakerId: number,
+  apiKey: string
 ): Promise<void> {
   const queryParams = new URLSearchParams({
     text: text,
@@ -93,74 +101,127 @@ async function playTtsQuest(
     queryParams.append('apiKey', apiKey.trim())
   }
 
-  const response = await fetch(`https://api.tts.quest/v3/voicevox/synthesis?${queryParams.toString()}`)
+  const controller = new AbortController()
+  const fetchTimer = setTimeout(() => controller.abort(), 6000)
+
+  let response: Response
+  try {
+    response = await fetch(`https://api.tts.quest/v3/voicevox/synthesis?${queryParams.toString()}`, {
+      signal: controller.signal
+    })
+  } catch (err: any) {
+    clearTimeout(fetchTimer)
+    throw new Error(`TTS Quest 接続失敗: ${err?.message || err}`)
+  }
+  clearTimeout(fetchTimer)
+
   if (!response.ok) {
-    throw new Error(`TTS Quest API エラー: ステータスコード ${response.status}`)
+    throw new Error(`APIレスポンスエラー: ${response.status}`)
   }
 
   const data = await response.json()
   if (data.isAudioError) {
-    throw new Error('TTS Quest API側で音声合成エラーが発生しました。')
+    throw new Error('音声合成エラーが発生しました。')
   }
 
-  const audioUrl = data.mp3DownloadUrl || data.mp3StreamingUrl
-  if (!audioUrl) {
-    throw new Error('TTS Quest API から音声URLを取得できませんでした。')
+  const downloadUrl = data.mp3DownloadUrl || data.mp3StreamingUrl
+  const statusUrl = data.audioStatusUrl
+  if (!downloadUrl) {
+    throw new Error('音声URLを取得できませんでした。')
   }
 
-  // 404 (ファイル未生成) 対策: 1秒間隔で最大12回リトライ
-  let audioResp: Response | null = null
-  for (let attempt = 0; attempt < 12; attempt++) {
-    audioResp = await fetch(audioUrl)
-    if (audioResp.ok) {
-      break
+  // ステータスURLが存在する場合はステータス確認を行い、404エラーログの発生を完全に抑止
+  if (statusUrl) {
+    let isReady = false
+    for (let i = 0; i < 35; i++) {
+      const statusController = new AbortController()
+      const timer = setTimeout(() => statusController.abort(), 4000)
+      try {
+        const sResp = await fetch(statusUrl, { signal: statusController.signal })
+        clearTimeout(timer)
+        if (sResp.ok) {
+          const sData = await sResp.json()
+          if (sData.isAudioError) {
+            throw new Error('音声合成処理中にエラーが発生しました。')
+          }
+          if (sData.isAudioReady) {
+            isReady = true
+            break
+          }
+        }
+      } catch (err: any) {
+        clearTimeout(timer)
+      }
+      // ポーリング間隔を350msに短縮し、生成完了直後に素早く再生
+      await new Promise((resolve) => setTimeout(resolve, 350))
     }
-    if (audioResp.status === 404) {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      continue
+
+    if (!isReady) {
+      throw new Error('音声データの生成完了待ちがタイムアウトしました。')
     }
-    throw new Error(`音声ダウンロードエラー: ステータスコード ${audioResp.status}`)
+  } else {
+    // audioStatusUrl が返らない環境向けの安全フォールバック（350ms間隔）
+    let isOk = false
+    for (let i = 0; i < 35; i++) {
+      try {
+        const testResp = await fetch(downloadUrl)
+        if (testResp.ok) {
+          isOk = true
+          break
+        }
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 350))
+    }
+    if (!isOk) {
+      throw new Error('音声データの取得がタイムアウトしました。')
+    }
   }
 
-  if (!audioResp || !audioResp.ok) {
-    throw new Error('TTS Quest 音声データの生成完了待ちがタイムアウトしました。')
+  // 生成完了後にMP3データをダウンロード
+  const audioRespController = new AbortController()
+  const audioFetchTimer = setTimeout(() => audioRespController.abort(), 10000)
+
+  let audioResp: Response
+  try {
+    audioResp = await fetch(downloadUrl, { signal: audioRespController.signal })
+  } catch (err: any) {
+    clearTimeout(audioFetchTimer)
+    throw new Error(`音声データのダウンロード失敗: ${err?.message || err}`)
+  }
+  clearTimeout(audioFetchTimer)
+
+  if (!audioResp.ok) {
+    throw new Error(`音声ダウンロードエラー: ${audioResp.status}`)
   }
 
-  const arrayBuffer = await audioResp.arrayBuffer()
-
-  const ctx = getAudioContext()
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+  const blob = await audioResp.blob()
+  const objectUrl = URL.createObjectURL(blob)
 
   return new Promise((resolve, reject) => {
     let isSettled = false
-
-    const source = ctx.createBufferSource()
-    source.buffer = audioBuffer
-
-    const gainNode = ctx.createGain()
+    const audio = new Audio(objectUrl)
     const targetVolume = Math.max(0, Math.min(1, volume / 100))
-    gainNode.gain.setValueAtTime(targetVolume, ctx.currentTime)
-
-    source.connect(gainNode)
-    gainNode.connect(ctx.destination)
-
-    currentGainNode = gainNode
+    audio.volume = targetVolume
+    currentAudioElement = audio
 
     const cleanup = () => {
-      clearTimeout(timeoutTimer)
-      currentGainNode = null
+      clearTimeout(playTimer)
+      audio.onended = null
+      audio.onerror = null
+      currentAudioElement = null
+      URL.revokeObjectURL(objectUrl)
     }
 
-    const timeoutTimer = setTimeout(() => {
+    const playTimer = setTimeout(() => {
       if (!isSettled) {
         isSettled = true
-        try { source.stop() } catch {}
+        try { audio.pause() } catch {}
         cleanup()
-        reject(new Error('TTS Quest 音声再生がタイムアウトしました。'))
+        reject(new Error('音声再生がタイムアウトしました。'))
       }
     }, 15000)
 
-    source.onended = () => {
+    audio.onended = () => {
       if (!isSettled) {
         isSettled = true
         cleanup()
@@ -168,18 +229,54 @@ async function playTtsQuest(
       }
     }
 
-    try {
-      source.start(0)
-    } catch (err) {
+    audio.onerror = () => {
+      if (!isSettled) {
+        isSettled = true
+        cleanup()
+        reject(new Error('音声の再生に失敗しました。'))
+      }
+    }
+
+    audio.play().catch((err) => {
       if (!isSettled) {
         isSettled = true
         cleanup()
         reject(err)
       }
-    }
+    })
   })
 }
 
+/**
+ * 1. VOICEVOX (TTS Quest) 再生制御 (リトライあり・他音声へのフォールバックなし)
+ */
+async function playTtsQuestWithRetry(
+  text: string,
+  volume: number,
+  speakerId: number = 3,
+  apiKey: string = ''
+): Promise<void> {
+  let lastError: any = null
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await attemptPlayTtsQuest(text, volume, speakerId, apiKey)
+      return
+    } catch (err) {
+      lastError = err
+      console.warn(`VOICEVOX 通信・再生エラー (試行 ${attempt}/2):`, err)
+      if (attempt < 2) {
+        await new Promise(res => setTimeout(res, 2500))
+      }
+    }
+  }
+
+  throw new Error(`VOICEVOXの取得に失敗しました。(${lastError})`)
+}
+
+/**
+ * 2. Google Cloud TTS での再生
+ */
 async function playGoogleCloudTts(
   text: string,
   volume: number,
@@ -272,6 +369,9 @@ async function playGoogleCloudTts(
   })
 }
 
+/**
+ * 3. ブラウザ標準 (Web Speech API) での再生
+ */
 function playWebSpeech(text: string, volume: number): Promise<void> {
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
@@ -292,47 +392,44 @@ function playWebSpeech(text: string, volume: number): Promise<void> {
   })
 }
 
+/**
+ * メイン読み上げ関数 (フォールバックなし)
+ */
 async function executeSpeak(
   text: string,
   provider: TtsProvider,
   volume: number,
   options?: TtsOptions
 ): Promise<void> {
-  // 引数の options とグローバル設定をマージ
   const opts = { ...globalTtsOptions, ...options }
 
   if (provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
-    try {
-      let speakerId = opts.speakerId || 3
-      if (provider.startsWith('voicevox_')) {
-        const parsedId = parseInt(provider.replace('voicevox_', ''), 10)
-        if (!isNaN(parsedId)) speakerId = parsedId
-      }
-      await playTtsQuest(text, volume, speakerId, opts.ttsQuestApiKey)
-      return
-    } catch (err) {
-      console.warn('TTS Quest での再生に失敗しました。Google Cloud TTS へ切り替えます。', err)
+    let speakerId = opts.speakerId || 3
+    if (provider.startsWith('voicevox_')) {
+      const parsedId = parseInt(provider.replace('voicevox_', ''), 10)
+      if (!isNaN(parsedId)) speakerId = parsedId
     }
+    await playTtsQuestWithRetry(text, volume, speakerId, opts.ttsQuestApiKey || '')
+    return
   }
 
-  if (provider === 'googleCloud' || provider === 'ttsQuest' || provider.startsWith('voicevox_')) {
-    try {
-      await playGoogleCloudTts(
-        text,
-        volume,
-        opts.googleTtsApiKey || '',
-        opts.googleVoiceName || 'ja-JP-Neural2-B',
-        opts.googlePitch || 0
-      )
-      return
-    } catch (err) {
-      console.warn('Google Cloud TTS での再生に失敗しました。Web Speech API へ切り替えます。', err)
-    }
+  if (provider === 'googleCloud') {
+    await playGoogleCloudTts(
+      text,
+      volume,
+      opts.googleTtsApiKey || '',
+      opts.googleVoiceName || 'ja-JP-Neural2-B',
+      opts.googlePitch || 0
+    )
+    return
   }
 
   await playWebSpeech(text, volume)
 }
 
+/**
+ * 外部から呼ばれるキュー登録用関数
+ */
 export function speak(
   text: string,
   provider: TtsProvider,
@@ -342,6 +439,15 @@ export function speak(
   if (!text.trim()) return Promise.resolve()
 
   return new Promise((resolve) => {
+    const isDuplicate = speechQueue.some(
+      (task) => task.text === text && task.provider === provider
+    )
+    if (isDuplicate) {
+      console.warn('重複リクエストを破棄しました。')
+      resolve()
+      return
+    }
+
     speechQueue.push({
       text,
       provider,
