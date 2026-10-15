@@ -85,7 +85,7 @@ async function processQueue(): Promise<void> {
 }
 
 /**
- * 内部ヘルパー: VOICEVOX API呼び出し＋ステータス確認ポーリング（404エラー非発生化・低遅延）
+ * 内部ヘルパー: VOICEVOX API呼び出し＋ステータス確認ポーリング（短縮待機・404非発生化）
  */
 async function attemptPlayTtsQuest(
   text: string,
@@ -130,12 +130,12 @@ async function attemptPlayTtsQuest(
     throw new Error('音声URLを取得できませんでした。')
   }
 
-  // ステータスURLが存在する場合はステータス確認を行い、404エラーログの発生を完全に抑止
+  // ステータスURLの確認（最大20回 × 350ms ＝ 約7秒で判定し、無駄な長時間拘束を抑止）
   if (statusUrl) {
     let isReady = false
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 20; i++) {
       const statusController = new AbortController()
-      const timer = setTimeout(() => statusController.abort(), 4000)
+      const timer = setTimeout(() => statusController.abort(), 3000)
       try {
         const sResp = await fetch(statusUrl, { signal: statusController.signal })
         clearTimeout(timer)
@@ -152,7 +152,6 @@ async function attemptPlayTtsQuest(
       } catch (err: any) {
         clearTimeout(timer)
       }
-      // ポーリング間隔を350msに短縮し、生成完了直後に素早く再生
       await new Promise((resolve) => setTimeout(resolve, 350))
     }
 
@@ -160,9 +159,8 @@ async function attemptPlayTtsQuest(
       throw new Error('音声データの生成完了待ちがタイムアウトしました。')
     }
   } else {
-    // audioStatusUrl が返らない環境向けの安全フォールバック（350ms間隔）
     let isOk = false
-    for (let i = 0; i < 35; i++) {
+    for (let i = 0; i < 20; i++) {
       try {
         const testResp = await fetch(downloadUrl)
         if (testResp.ok) {
@@ -179,7 +177,7 @@ async function attemptPlayTtsQuest(
 
   // 生成完了後にMP3データをダウンロード
   const audioRespController = new AbortController()
-  const audioFetchTimer = setTimeout(() => audioRespController.abort(), 10000)
+  const audioFetchTimer = setTimeout(() => audioRespController.abort(), 8000)
 
   let audioResp: Response
   try {
@@ -248,7 +246,7 @@ async function attemptPlayTtsQuest(
 }
 
 /**
- * 1. VOICEVOX (TTS Quest) 再生制御 (リトライあり・他音声へのフォールバックなし)
+ * 1. VOICEVOX (TTS Quest) 再生制御 (リトライ待機を1秒に短縮)
  */
 async function playTtsQuestWithRetry(
   text: string,
@@ -266,7 +264,7 @@ async function playTtsQuestWithRetry(
       lastError = err
       console.warn(`VOICEVOX 通信・再生エラー (試行 ${attempt}/2):`, err)
       if (attempt < 2) {
-        await new Promise(res => setTimeout(res, 2500))
+        await new Promise((res) => setTimeout(res, 1000))
       }
     }
   }

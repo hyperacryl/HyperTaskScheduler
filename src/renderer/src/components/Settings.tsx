@@ -67,16 +67,16 @@ export function Settings({
 
   const [isTesting, setIsTesting] = useState(false)
 
-  // セリフ設定内のサブタブ（標準用 / ずんだもん用）
+  // 口調サブタブ（アナウンス口調 / ずんだもん口調）
   const [templateTab, setTemplateTab] = useState<'standard' | 'zundamon'>(() =>
-    ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest' ? 'zundamon' : 'standard'
+    ttsProvider === 'voicevox_3' ? 'zundamon' : 'standard'
   )
 
   const handleTestPlay = async () => {
     if (isTesting) return
     setIsTesting(true)
 
-    const isZunda = ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest'
+    const isZunda = ttsProvider === 'voicevox_3'
     const testText = isZunda
       ? 'これは音声通知のテストなのだ。音量と声質を確認するのだ！' 
       : 'これはテスト再生です。音量と声質を確認してください。'
@@ -97,12 +97,10 @@ export function Settings({
     }
   }
 
-  // 現在編集対象のテンプレートとセッター
   const currentTpl = templateTab === 'standard' ? standardTemplates : zundamonTemplates
   const setCurrentTpl = templateTab === 'standard' ? setStandardTemplates : setZundamonTemplates
   const handleResetCurrent = templateTab === 'standard' ? onResetStandardTemplates : onResetZundamonTemplates
 
-  // 変数を入力値の末尾に挿入するヘルパー
   const handleInsertVar = (field: keyof AnnounceTemplates, varName: string) => {
     const val = currentTpl[field] || ''
     const nextVal = val ? `${val} ${varName}` : varName
@@ -242,7 +240,7 @@ export function Settings({
                   onChange={(val) => setPomodoroTargetCycles(typeof val === 'number' ? val : 0)}
                   min={0}
                   max={99}
-                  styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+                  styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff', width: '75px' } }}
                 />
               </div>
             )}
@@ -311,7 +309,7 @@ export function Settings({
           </Stack>
         </Tabs.Panel>
 
-        {/* 4. 通知セリフ設定 (サブタブ切り替え・変数ボタン・プレビュー付き) */}
+        {/* 4. 通知セリフ設定 (口調タブ・変数ボタン・プレビュー付き) */}
         <Tabs.Panel value="templates" pl="xl">
           <Stack gap="md">
             <Flex justify="space-between" align="center">
@@ -326,8 +324,8 @@ export function Settings({
               value={templateTab}
               onChange={(val) => setTemplateTab(val as 'standard' | 'zundamon')}
               data={[
-                { label: '📢 標準ボイス用 (Google / Windows)', value: 'standard' },
-                { label: '🟢 ずんだもん用 (VOICEVOX)', value: 'zundamon' }
+                { label: '📢 アナウンス口調 (標準 / その他)', value: 'standard' },
+                { label: '🟢 ずんだもん口調 (ずんだもん)', value: 'zundamon' }
               ]}
               fullWidth
               radius="md"
@@ -339,8 +337,10 @@ export function Settings({
             />
 
             <Text size="xs" c="#828a9e">
-              ※ 音声エンジン設定が VOICEVOX のときは「ずんだもん用」、Google/Windows のときは「標準ボイス用」が自動適用されます。
+              ※ 音声エンジンが「ずんだもん」のときは「ずんだもん口調」、それ以外（Google / Windows / めたん・つむぎ・ひまり等）はすべて「アナウンス口調」が適用されます。
             </Text>
+
+            <Divider my="xs" label="📋 スケジューラー用セリフ" labelPosition="left" color="rgba(255,255,255,0.1)" />
 
             {/* 1. タスク開始時 */}
             <div>
@@ -476,6 +476,102 @@ export function Settings({
               />
               <Text size="xs" c="#828a9e" mt="2px">
                 💬 プレビュー: {currentTpl.allCompleted || ''}
+              </Text>
+            </div>
+
+            <Divider my="xs" label="🍅 ポモドーロタイマー用セリフ" labelPosition="left" color="rgba(255,255,255,0.1)" />
+
+            {/* 7. ポモドーロ作業開始時 */}
+            <div>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">7. ポモドーロ作業開始時</Text>
+                <Text size="11px" c="#828a9e">使用可能変数なし</Text>
+              </Flex>
+              <TextInput 
+                value={currentTpl.pomodoroWorkStart || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, pomodoroWorkStart: e.target.value })}
+                placeholder="セリフを入力..."
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {currentTpl.pomodoroWorkStart || ''}
+              </Text>
+            </div>
+
+            {/* 8. ポモドーロ作業終了前 */}
+            <div>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Group gap="xs" align="center">
+                  <Text size="xs" fw={700} c="#c1c7d8">8. ポモドーロ作業終了前</Text>
+                  <Badge size="xs" variant="light" color="gray">{preNotifyMinutes}分前</Badge>
+                </Group>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('pomodoroWorkPreEnd', '{minutes}')}>+ 残り分数</Button>
+                </Group>
+              </Flex>
+              <TextInput 
+                value={currentTpl.pomodoroWorkPreEnd || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, pomodoroWorkPreEnd: e.target.value })}
+                placeholder="セリフを入力..."
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.pomodoroWorkPreEnd || '').replace('{minutes}', preNotifyMinutes.toString())}
+              </Text>
+            </div>
+
+            {/* 9. ポモドーロ休憩開始時 */}
+            <div>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">9. ポモドーロ休憩開始時</Text>
+                <Group gap="4px">
+                  <Text size="11px" c="#828a9e">変数挿入:</Text>
+                  <Button size="compact-xs" variant="light" color="indigo" onClick={() => handleInsertVar('pomodoroBreakStart', '{minutes}')}>+ 休憩分数</Button>
+                </Group>
+              </Flex>
+              <TextInput 
+                value={currentTpl.pomodoroBreakStart || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, pomodoroBreakStart: e.target.value })}
+                placeholder="セリフを入力..."
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {(currentTpl.pomodoroBreakStart || '').replace('{minutes}', '5')}
+              </Text>
+            </div>
+
+            {/* 10. ポモドーロ休憩終了前 */}
+            <div>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">10. ポモドーロ休憩終了前</Text>
+                <Text size="11px" c="#828a9e">使用可能変数なし</Text>
+              </Flex>
+              <TextInput 
+                value={currentTpl.pomodoroBreakPreEnd || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, pomodoroBreakPreEnd: e.target.value })}
+                placeholder="セリフを入力..."
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {currentTpl.pomodoroBreakPreEnd || ''}
+              </Text>
+            </div>
+
+            {/* 11. ポモドーロ全セット完了時 */}
+            <div>
+              <Flex justify="space-between" align="center" mb="4px">
+                <Text size="xs" fw={700} c="#c1c7d8">11. ポモドーロ全セット完了時</Text>
+                <Text size="11px" c="#828a9e">使用可能変数なし</Text>
+              </Flex>
+              <TextInput 
+                value={currentTpl.pomodoroAllCompleted || ''} 
+                onChange={(e) => setCurrentTpl({ ...currentTpl, pomodoroAllCompleted: e.target.value })}
+                placeholder="セリフを入力..."
+                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
+              />
+              <Text size="xs" c="#828a9e" mt="2px">
+                💬 プレビュー: {currentTpl.pomodoroAllCompleted || ''}
               </Text>
             </div>
           </Stack>

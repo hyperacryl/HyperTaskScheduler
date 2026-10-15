@@ -10,24 +10,34 @@ import { MiniTimer } from './components/MiniTimer'
 import { usePomodoro } from './hooks/usePomodoro'
 import { Task, AnnounceTemplates } from './types'
 
-// A: 標準・実用向けデフォルト
 export const defaultStandardTemplates: AnnounceTemplates = {
   taskStart: '{title} の開始時刻になりました。',
   taskPreEnd: '終了まであと {minutes} 分です。仕上げに入りましょう。',
   taskEnd: '{title} の終了時刻です。',
   breakStart: '{minutes} 分間の休憩です。作業を止めてリフレッシュしてください。',
   breakPreEnd: 'まもなく休憩が終了します。次のタスクの準備をしましょう。',
-  allCompleted: '本日のタスクがすべて終了しました。お疲れ様でした。'
+  allCompleted: '本日のタスクがすべて終了しました。お疲れ様でした。',
+
+  pomodoroWorkStart: 'ポモドーロ作業を開始します。',
+  pomodoroWorkPreEnd: '作業終了まであと {minutes} 分です。仕上げに入りましょう。',
+  pomodoroBreakStart: '{minutes} 分間の休憩です。作業を止めてリフレッシュしてください。',
+  pomodoroBreakPreEnd: 'まもなく休憩が終了します。次の作業の準備をしましょう。',
+  pomodoroAllCompleted: 'すべてのセットが終了しました。お疲れ様でした。'
 }
 
-// B: ずんだもん・キャラクター向けデフォルト
 export const defaultZundamonTemplates: AnnounceTemplates = {
   taskStart: '{title} の時間なのだ。張り切っていくのだ！',
   taskPreEnd: '{title} 終了まであと {minutes} 分なのだ。キリのいいところでまとめるのだ。',
   taskEnd: '{title} の終了時刻なのだ。ひとまず作業完了なのだ。',
   breakStart: '{minutes} 分間の休憩時間なのだ。しっかり休むのだ。',
   breakPreEnd: 'まもなく休憩終了なのだ。',
-  allCompleted: '予定していたタスクがすべて終わったのだ！お疲れ様なのだ！'
+  allCompleted: '予定していたタスクがすべて終わったのだ！お疲れ様なのだ！',
+
+  pomodoroWorkStart: 'ポモドーロ作業を始めるのだ！集中していくのだ！',
+  pomodoroWorkPreEnd: '作業終了まであと {minutes} 分なのだ。キリのいいところでまとめるのだ。',
+  pomodoroBreakStart: '{minutes} 分間の休憩時間なのだ。しっかり休むのだ！',
+  pomodoroBreakPreEnd: 'まもなく休憩終了なのだ。次の準備をするのだ！',
+  pomodoroAllCompleted: '予定していた全セットが終了したのだ！お疲れ様だったのだ！'
 }
 
 const customTheme = createTheme({
@@ -89,13 +99,11 @@ export function App() {
     return saved !== null ? saved === 'true' : true
   })
 
-  // タスク自動完了設定
   const [autoCompleteTask, setAutoCompleteTask] = useState<boolean>(() => {
     const saved = localStorage.getItem('ht_auto_complete_enabled')
     return saved !== null ? saved === 'true' : false
   })
 
-  // ポモドーロの自動サイクル設定
   const [pomodoroAutoCycle, setPomodoroAutoCycle] = useState<boolean>(() => {
     const saved = localStorage.getItem('ht_pomo_auto_cycle')
     return saved !== null ? saved === 'true' : true
@@ -106,7 +114,6 @@ export function App() {
     return saved ? parseInt(saved, 10) : 0
   })
 
-  // 2種類のセリフセットを独立保持
   const [standardTemplates, setStandardTemplates] = useState<AnnounceTemplates>(() => {
     const saved = localStorage.getItem('ht_announce_templates_standard')
     if (!saved) return defaultStandardTemplates
@@ -142,11 +149,6 @@ export function App() {
     }, 1000)
     return () => clearInterval(interval)
   }, [])
-
-  const pomodoro = usePomodoro(ttsProvider, volume, preNotifyMinutes, {
-    autoCycleEnabled: pomodoroAutoCycle,
-    targetCycles: pomodoroTargetCycles
-  })
 
   useEffect(() => { localStorage.setItem('ht_api_key', apiKey) }, [apiKey])
   useEffect(() => { localStorage.setItem('ht_google_tts_api_key', googleTtsApiKey) }, [googleTtsApiKey])
@@ -184,9 +186,13 @@ export function App() {
     })
   }, [googleTtsApiKey, googleVoiceName, googlePitch])
 
-  // プロバイダーに応じて適用するセリフセットを自動判定
-  const isZundamonProvider = ttsProvider.startsWith('voicevox_') || ttsProvider === 'ttsQuest'
-  const activeTemplates = isZundamonProvider ? zundamonTemplates : standardTemplates
+  const isZundamon = ttsProvider === 'voicevox_3'
+  const activeTemplates = isZundamon ? zundamonTemplates : standardTemplates
+
+  const pomodoro = usePomodoro(ttsProvider, volume, preNotifyMinutes, activeTemplates, {
+    autoCycleEnabled: pomodoroAutoCycle,
+    targetCycles: pomodoroTargetCycles
+  })
 
   const currentTaskTitle = (() => {
     if (!virtualTimeStr || tasks.length === 0) return '予定なし'
@@ -203,19 +209,14 @@ export function App() {
     }
   }
 
+  // コンパクトモード切替時、勝手に最前面にする処理を削除
   const handleToggleCompactMode = (enable: boolean): void => {
     setIsCompactMode(enable)
     if (typeof window !== 'undefined' && window.api && window.api.resizeWindow) {
       if (enable) {
         window.api.resizeWindow(340, 220)
-        if (!isAlwaysOnTop) {
-          setIsAlwaysOnTop(true)
-          if (window.api.setAlwaysOnTop) {
-            window.api.setAlwaysOnTop(true)
-          }
-        }
       } else {
-        window.api.resizeWindow(1100, 720)
+        window.api.resizeWindow(1100, 880)
       }
     }
   }

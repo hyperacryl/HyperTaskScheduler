@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Card, Title, Button, Textarea, Stack, Text, Group, TextInput, ActionIcon, Switch, Badge } from '@mantine/core'
+import { 
+  Card, Title, Button, Textarea, Stack, Text, Group, TextInput, 
+  ActionIcon, Switch, Progress 
+} from '@mantine/core'
 import { generateSchedule } from '../services/aiService'
 import { Task, AnnounceTemplates } from '../types'
 import { playNotification, TtsProvider } from '../services/audioService'
@@ -78,7 +81,6 @@ export function Scheduler({
     handleAutoTaskComplete
   )
 
-  // 全タスク完了検知（直書き分岐を撤廃し、設定テンプレートを100%参照）
   useEffect(() => {
     if (tasks.length === 0) {
       allCompletedNotifiedRef.current = false
@@ -232,8 +234,34 @@ export function Scheduler({
 
   const nowHHMM = virtualClockStr ? virtualClockStr.substring(0, 5) : ''
 
+  const getTaskProgress = (task: Task): number => {
+    if (!task.startTime || !task.endTime) return 0
+    const vNow = new Date(Date.now() + timeOffset)
+    const parseMs = (timeStr: string) => {
+      const [h, m] = timeStr.split(':').map(Number)
+      return new Date(vNow.getFullYear(), vNow.getMonth(), vNow.getDate(), h, m, 0, 0).getTime()
+    }
+    const sMs = parseMs(task.startTime)
+    let eMs = parseMs(task.endTime)
+    if (eMs < sMs) eMs += 24 * 60 * 60 * 1000
+    const curMs = vNow.getTime()
+
+    if (curMs <= sMs) return 0
+    if (curMs >= eMs) return 100
+    return Math.round(((curMs - sMs) / (eMs - sMs)) * 100)
+  }
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
+      {/* 実行中タスクの枠線点滅（呼吸）アニメーション定義 */}
+      <style>{`
+        @keyframes task-border-pulse {
+          0% { border-color: rgba(99, 102, 241, 0.3); box-shadow: 0 0 8px rgba(99, 102, 241, 0.1); }
+          50% { border-color: rgba(99, 102, 241, 0.9); box-shadow: 0 0 16px rgba(99, 102, 241, 0.4); }
+          100% { border-color: rgba(99, 102, 241, 0.3); box-shadow: 0 0 8px rgba(99, 102, 241, 0.1); }
+        }
+      `}</style>
+
       {/* 左パネル: APP CLOCK, GENERATOR, デバッグスキップ */}
       <Stack gap="md" style={{ overflowY: 'auto' }}>
         {/* 1. APP CLOCK */}
@@ -351,6 +379,7 @@ export function Scheduler({
             ) : (
               tasks.map((task) => {
                 const isActive = !task.completed && task.startTime <= nowHHMM && nowHHMM < task.endTime
+                const progress = isActive ? getTaskProgress(task) : 0
 
                 return (
                   <Card
@@ -359,19 +388,15 @@ export function Scheduler({
                     styles={{
                       root: {
                         backgroundColor: isActive
-                          ? 'rgba(99, 102, 241, 0.18)'
+                          ? 'rgba(99, 102, 241, 0.12)'
                           : task.isBreak
                           ? 'rgba(16, 185, 129, 0.08)'
                           : '#21253a',
-                        borderColor: isActive
-                          ? '#818cf8'
-                          : task.isBreak
-                          ? 'rgba(16, 185, 129, 0.2)'
-                          : 'rgba(255, 255, 255, 0.05)',
-                        borderWidth: isActive ? '2px' : '1px',
-                        boxShadow: isActive ? '0 0 16px rgba(129, 140, 248, 0.45)' : 'none',
-                        opacity: task.completed ? 0.4 : 1,
-                        transition: 'all 0.25s ease'
+                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                        opacity: task.completed ? 0.38 : 1,
+                        transition: 'all 0.25s ease',
+                        // 実行中タスクは枠線を淡く呼吸点滅させる
+                        animation: isActive ? 'task-border-pulse 2.5s infinite ease-in-out' : 'none'
                       }
                     }}
                   >
@@ -387,13 +412,8 @@ export function Scheduler({
                             <Text size="sm" fw={700} c={isActive ? '#a5b4fc' : task.isBreak ? '#34d399' : 'white'} style={{ textDecoration: task.completed ? 'line-through' : 'none' }}>
                               {task.title}
                             </Text>
-                            {isActive && (
-                              <Badge size="xs" variant="gradient" gradient={{ from: 'indigo', to: 'violet' }}>
-                                実行中
-                              </Badge>
-                            )}
                           </Group>
-                          <Text size="xs" c="#828a9e">
+                          <Text size="xs" c="#828a9e" mt="2px">
                             {task.startTime} - {task.endTime} ({task.estimatedMinutes}分)
                           </Text>
                         </div>
@@ -403,6 +423,18 @@ export function Scheduler({
                         ✕
                       </ActionIcon>
                     </Group>
+
+                    {/* 実行中タスクのリアルタイム進行度バー */}
+                    {isActive && (
+                      <Progress 
+                        value={progress} 
+                        size="xs" 
+                        color="indigo" 
+                        radius="xs" 
+                        mt="xs"
+                        styles={{ root: { backgroundColor: 'rgba(255, 255, 255, 0.08)' } }}
+                      />
+                    )}
                   </Card>
                 )
               })

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { usePomodoro } from '../hooks/usePomodoro'
 import { TtsProvider } from '../services/audioService'
-import { Card, Text, Title, Button, Group, Flex, SegmentedControl, RingProgress, Center, Switch, NumberInput, Badge, Modal } from '@mantine/core'
+import { Card, Text, Title, Button, Group, Flex, SegmentedControl, Center, Switch, NumberInput, Badge, Modal } from '@mantine/core'
 import { AnnounceTemplates, Task } from '../types'
 
 interface PomodoroProps {
@@ -22,6 +22,7 @@ export function Pomodoro({
   ttsProvider,
   volume,
   preNotifyMinutes,
+  templates,
   isDebugMode = false,
   autoCycleEnabled,
   setAutoCycleEnabled,
@@ -46,12 +47,11 @@ export function Pomodoro({
     changePreset,
     debugSetTimeLeft,
     debugAddSeconds
-  } = usePomodoro(ttsProvider, volume, preNotifyMinutes, {
+  } = usePomodoro(ttsProvider, volume, preNotifyMinutes, templates, {
     autoCycleEnabled,
     targetCycles
   })
 
-  // 未完了タスクが存在する場合、ダイアログを表示
   const handleStartClick = () => {
     if (!isRunning && tasks.some((t) => !t.completed)) {
       setConfirmOpened(true)
@@ -60,7 +60,6 @@ export function Pomodoro({
     }
   }
 
-  // ダイアログで「破棄して開始」を選んだ時の処理
   const handleConfirmStart = () => {
     setConfirmOpened(false)
     setTasks([])
@@ -69,10 +68,30 @@ export function Pomodoro({
 
   const totalSec = mode === 'work' ? workMinutes * 60 : breakMinutes * 60
   const currentSec = parseInt(minutes, 10) * 60 + parseInt(seconds, 10)
-  const progress = (currentSec / totalSec) * 100
+  const progress = Math.max(0, Math.min(100, (currentSec / totalSec) * 100))
+
+  const circleSize = 200
+  const strokeWidth = 12
+  const radius = (circleSize - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const strokeDashoffset = circumference - (progress / 100) * circumference
 
   return (
     <Flex justify="center" align="center" py="xs" style={{ minHeight: '100%' }}>
+      {/* 稼働中タイマーリングの淡い呼吸パルスアニメーション */}
+      <style>{`
+        @keyframes pomo-work-ring-pulse {
+          0% { filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.25)); }
+          50% { filter: drop-shadow(0 0 7px rgba(99, 102, 241, 0.55)); }
+          100% { filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.25)); }
+        }
+        @keyframes pomo-break-ring-pulse {
+          0% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.25)); }
+          50% { filter: drop-shadow(0 0 7px rgba(16, 185, 129, 0.55)); }
+          100% { filter: drop-shadow(0 0 2px rgba(16, 185, 129, 0.25)); }
+        }
+      `}</style>
+
       {/* 破棄確認ダイアログ */}
       <Modal
         opened={confirmOpened}
@@ -214,14 +233,66 @@ export function Pomodoro({
           </Group>
         </Group>
 
+        {/* グラデーション円形タイマー（呼吸発光付き） */}
         <Center mb="lg">
-          <RingProgress
-            size={210}
-            thickness={16}
-            roundCaps
-            sections={[{ value: progress, color: mode === 'work' ? 'indigo.5' : 'teal.4' }]}
-            rootColor="rgba(255, 255, 255, 0.05)"
-            label={
+          <div style={{ position: 'relative', width: circleSize, height: circleSize }}>
+            <svg width={circleSize} height={circleSize} style={{ display: 'block' }}>
+              <defs>
+                <linearGradient id="pomoWorkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#6366f1" />
+                  <stop offset="100%" stopColor="#a855f7" />
+                </linearGradient>
+
+                <linearGradient id="pomoBreakGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#10b981" />
+                  <stop offset="100%" stopColor="#06b6d4" />
+                </linearGradient>
+              </defs>
+
+              <circle
+                cx={circleSize / 2}
+                cy={circleSize / 2}
+                r={radius}
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.05)"
+                strokeWidth={strokeWidth}
+              />
+
+              <circle
+                cx={circleSize / 2}
+                cy={circleSize / 2}
+                r={radius}
+                fill="none"
+                stroke={mode === 'work' ? 'url(#pomoWorkGrad)' : 'url(#pomoBreakGrad)'}
+                strokeWidth={strokeWidth}
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${circleSize / 2} ${circleSize / 2})`}
+                style={{
+                  transition: 'stroke-dashoffset 0.4s ease',
+                  animation: isRunning
+                    ? mode === 'work'
+                      ? 'pomo-work-ring-pulse 2.5s infinite ease-in-out'
+                      : 'pomo-break-ring-pulse 2.5s infinite ease-in-out'
+                    : 'none'
+                }}
+              />
+            </svg>
+
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                pointerEvents: 'none'
+              }}
+            >
               <Text
                 c="white"
                 fw={800}
@@ -234,8 +305,8 @@ export function Pomodoro({
               >
                 {minutes}:{seconds}
               </Text>
-            }
-          />
+            </div>
+          </div>
         </Center>
 
         <Group justify="center" gap="md" mb={isDebugMode ? 'lg' : 0}>

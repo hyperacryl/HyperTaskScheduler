@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { playNotification, TtsProvider } from '../services/audioService'
+import { AnnounceTemplates } from '../types'
 
 export interface PomodoroOptions {
   autoCycleEnabled: boolean
@@ -11,13 +12,12 @@ export const usePomodoro = (
   ttsProvider: TtsProvider,
   volume: number,
   preNotifyMinutes: number,
+  templates: AnnounceTemplates,
   options?: PomodoroOptions
 ) => {
-  // プリセット時間の管理 (デフォルト: 25分 / 5分)
   const [workMinutes, setWorkMinutes] = useState(25)
   const [breakMinutes, setBreakMinutes] = useState(5)
 
-  // 自動サイクル設定
   const [autoCycleEnabled, setAutoCycleEnabled] = useState(options?.autoCycleEnabled ?? true)
   const [targetCycles, setTargetCycles] = useState(options?.targetCycles ?? 0)
   const [completedCycles, setCompletedCycles] = useState(0)
@@ -26,11 +26,9 @@ export const usePomodoro = (
   const [timeLeft, setTimeLeft] = useState(workMinutes * 60)
   const [isRunning, setIsRunning] = useState(false)
 
-  // 重複通知防止用のRefフラグ
   const preNotified = useRef(false)
   const endNotified = useRef(false)
 
-  // 外部からのオプション変化を同期
   useEffect(() => {
     if (options?.autoCycleEnabled !== undefined) {
       setAutoCycleEnabled(options.autoCycleEnabled)
@@ -40,15 +38,6 @@ export const usePomodoro = (
     }
   }, [options?.autoCycleEnabled, options?.targetCycles])
 
-  // ずんだもん（voicevox_3）の場合に語尾を変更するヘルパー関数
-  const formatSpeech = useCallback(
-    (normalText: string, zundamonText: string) => {
-      return ttsProvider === 'voicevox_3' ? zundamonText : normalText
-    },
-    [ttsProvider]
-  )
-
-  // プリセット切替関数 (15/3, 25/5, 52/17, 90/20)
   const changePreset = useCallback((work: number, brk: number) => {
     setWorkMinutes(work)
     setBreakMinutes(brk)
@@ -61,7 +50,6 @@ export const usePomodoro = (
 
   const toggleTimer = () => setIsRunning((prev) => !prev)
 
-  // リセットボタンが押された時
   const resetTimer = useCallback(() => {
     setIsRunning(false)
     setTimeLeft(mode === 'work' ? workMinutes * 60 : breakMinutes * 60)
@@ -69,7 +57,6 @@ export const usePomodoro = (
     endNotified.current = false
   }, [mode, workMinutes, breakMinutes])
 
-  // 作業 / 休憩タブ切り替え（タブ切り替えに合わせてタイマー数字も切り替える）
   const switchMode = useCallback((newMode: 'work' | 'break') => {
     setMode(newMode)
     setIsRunning(false)
@@ -112,13 +99,13 @@ export const usePomodoro = (
       !preNotified.current
     ) {
       preNotified.current = true
-      const speech = formatSpeech(
-        `作業終了の${preNotifyMinutes}分前です。キリのいいところで終わらせる準備をしましょう。`,
-        `作業終了の${preNotifyMinutes}分前なのだ。キリのいいところで終わらせる準備をするのだ！`
-      )
+      const templateText = templates.pomodoroWorkPreEnd || '作業終了まであと {minutes} 分です。仕上げに入りましょう。'
+      const speech = templateText
+        .replace('{minutes}', preNotifyMinutes.toString())
+        .replace('{title}', 'ポモドーロ作業')
       playNotification(speech, ttsProvider, volume)
     }
-  }, [timeLeft, isRunning, mode, preNotifyMinutes, ttsProvider, volume, formatSpeech])
+  }, [timeLeft, isRunning, mode, preNotifyMinutes, ttsProvider, volume, templates])
 
   // タイマー終了（0秒到達）時の処理と自動サイクル制御
   useEffect(() => {
@@ -134,25 +121,21 @@ export const usePomodoro = (
       const nextCompleted = completedCycles + 1
       setCompletedCycles(nextCompleted)
 
-      const speech = formatSpeech(
-        `作業時間が終了しました。${breakMinutes}分間の休憩に入ってください。`,
-        `作業時間が終了したのだ！${breakMinutes}分間の休憩に入るのだ！`
-      )
-      playNotification(speech, ttsProvider, volume)
-
-      // 指定セット数に達したかどうかのチェック (targetCycles > 0 のとき)
+      // 全セット完了チェック
       if (targetCycles > 0 && nextCompleted >= targetCycles) {
         nextShouldRun = false
+        const speech = templates.pomodoroAllCompleted || 'すべてのセットが終了しました。お疲れ様でした。'
+        playNotification(speech, ttsProvider, volume)
       } else {
+        const templateText = templates.pomodoroBreakStart || '{minutes} 分間の休憩です。作業を止めてリフレッシュしてください。'
+        const speech = templateText.replace('{minutes}', breakMinutes.toString())
+        playNotification(speech, ttsProvider, volume)
         nextShouldRun = autoCycleEnabled
       }
     } else {
-      const speech = formatSpeech(
-        '休憩が終了しました。作業を再開しましょう。',
-        '休憩が終了したのだ！作業を再開するのだ！'
-      )
+      // 休憩終了時（作業開始）
+      const speech = templates.pomodoroWorkStart || 'ポモドーロ作業を開始します。'
       playNotification(speech, ttsProvider, volume)
-
       nextShouldRun = autoCycleEnabled
     }
 
@@ -172,7 +155,7 @@ export const usePomodoro = (
     completedCycles,
     ttsProvider,
     volume,
-    formatSpeech
+    templates
   ])
 
   const minutes = Math.floor(timeLeft / 60).toString().padStart(2, '0')

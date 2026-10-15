@@ -6,9 +6,7 @@ import icon from '../../resources/icon.png?asset'
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1100,
-    height: 720,
-    minWidth: 340,
-    minHeight: 220,
+    height: 880,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -32,42 +30,37 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // 純粋な数値として受け取り、確実に型変換してクラッシュを防ぐ
+  ipcMain.on('resize-window', (_, rawWidth, rawHeight) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+
+    const targetWidth = Number(rawWidth) || 1100
+    const targetHeight = Number(rawHeight) || 880
+
+    const bounds = mainWindow.getBounds()
+    const rightX = bounds.x + bounds.width
+    const nextX = rightX - targetWidth
+
+    mainWindow.setBounds({
+      x: nextX,
+      y: bounds.y,
+      width: targetWidth,
+      height: targetHeight
+    })
+  })
+
+  // 最前面表示の切り替え機能
+  ipcMain.on('set-always-on-top', (_, flag: boolean) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.setAlwaysOnTop(Boolean(flag))
+  })
 }
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
-
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
-  })
-
-  // 最前面表示の切り替え
-  ipcMain.on('set-always-on-top', (event, alwaysOnTop: boolean) => {
-    const webContents = event.sender
-    const win = BrowserWindow.fromWebContents(webContents)
-    if (win) {
-      win.setAlwaysOnTop(alwaysOnTop, 'floating')
-    }
-  })
-
-  // ウィンドウサイズの変更 (右上角のスクリーン座標を絶対保持)
-  ipcMain.on('resize-window', (event, { width: newWidth, height: newHeight }: { width: number; height: number }) => {
-    const webContents = event.sender
-    const win = BrowserWindow.fromWebContents(webContents)
-    if (!win) return
-
-    const [currentX, currentY] = win.getPosition()
-    const [currentW] = win.getSize()
-
-    // 右上端 (currentX + currentW) を固定して新しい X 座標を補正計算
-    const newX = currentX + (currentW - newWidth)
-
-    win.setBounds({
-      x: Math.round(newX),
-      y: currentY,
-      width: Math.round(newWidth),
-      height: Math.round(newHeight)
-    }, true)
   })
 
   createWindow()
