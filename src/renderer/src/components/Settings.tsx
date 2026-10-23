@@ -8,8 +8,7 @@ import { playNotification, TtsProvider } from '../services/audioService'
 import { AnnounceTemplates } from '../types'
 
 interface SettingsProps {
-  apiKey: string
-  setApiKey: (val: string) => void
+  // apiKey, setApiKey は削除済
   googleTtsApiKey: string
   setGoogleTtsApiKey: (val: string) => void
   googleVoiceName: string
@@ -45,7 +44,6 @@ interface SettingsProps {
 }
 
 export function Settings({
-  apiKey, setApiKey,
   googleTtsApiKey, setGoogleTtsApiKey,
   googleVoiceName, setGoogleVoiceName,
   googlePitch, setGooglePitch,
@@ -124,17 +122,7 @@ export function Settings({
         <Tabs.Panel value="api" pl="xl">
           <Stack gap="lg">
             <Title order={5} c="white" fw={700}>外部APIキー設定</Title>
-
-            <div>
-              <Text size="sm" fw={700} c="#c1c7d8" mb="xs">AI自動生成用 (OpenAI API Key - GPT)</Text>
-              <PasswordInput 
-                value={apiKey} 
-                onChange={(e) => setApiKey(e.target.value)} 
-                placeholder="sk-proj-..."
-                styles={{ input: { backgroundColor: '#21253a', borderColor: 'rgba(255,255,255,0.08)', color: '#ffffff' } }}
-              />
-            </div>
-
+            {/* OpenAI API Key入力欄は削除済 */}
             <div>
               <Text size="sm" fw={700} c="#c1c7d8" mb="xs">音声通知用 (Google Cloud TTS API Key)</Text>
               <PasswordInput 

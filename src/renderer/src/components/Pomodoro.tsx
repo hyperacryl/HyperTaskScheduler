@@ -1,38 +1,25 @@
 import { useState } from 'react'
-import { usePomodoro } from '../hooks/usePomodoro'
-import { TtsProvider } from '../services/audioService'
 import { Card, Text, Title, Button, Group, Flex, SegmentedControl, Center, Switch, NumberInput, Badge, Modal } from '@mantine/core'
-import { AnnounceTemplates, Task } from '../types'
+import { Task } from '../types'
+// usePomodoro の戻り値の型を使用するためインポート
+import { usePomodoro } from '../hooks/usePomodoro'
 
 interface PomodoroProps {
-  ttsProvider: TtsProvider
-  volume: number
-  preNotifyMinutes: number
-  templates: AnnounceTemplates
+  pomodoroState: ReturnType<typeof usePomodoro>
   isDebugMode?: boolean
-  autoCycleEnabled: boolean
-  setAutoCycleEnabled: (val: boolean) => void
-  targetCycles: number
-  setTargetCycles: (val: number) => void
   tasks: Task[]
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>
 }
 
 export function Pomodoro({
-  ttsProvider,
-  volume,
-  preNotifyMinutes,
-  templates,
+  pomodoroState,
   isDebugMode = false,
-  autoCycleEnabled,
-  setAutoCycleEnabled,
-  targetCycles,
-  setTargetCycles,
   tasks,
   setTasks
 }: PomodoroProps) {
   const [confirmOpened, setConfirmOpened] = useState(false)
 
+  // 親から受け取った単一のタイマー状態を展開
   const {
     minutes,
     seconds,
@@ -46,11 +33,12 @@ export function Pomodoro({
     switchMode,
     changePreset,
     debugSetTimeLeft,
-    debugAddSeconds
-  } = usePomodoro(ttsProvider, volume, preNotifyMinutes, templates, {
+    debugAddSeconds,
     autoCycleEnabled,
-    targetCycles
-  })
+    setAutoCycleEnabled,
+    targetCycles,
+    setTargetCycles
+  } = pomodoroState
 
   const handleStartClick = () => {
     if (!isRunning && tasks.some((t) => !t.completed)) {
@@ -78,7 +66,6 @@ export function Pomodoro({
 
   return (
     <Flex justify="center" align="center" py="xs" style={{ minHeight: '100%' }}>
-      {/* 稼働中タイマーリングの淡い呼吸パルスアニメーション */}
       <style>{`
         @keyframes pomo-work-ring-pulse {
           0% { filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.25)); }
@@ -92,7 +79,6 @@ export function Pomodoro({
         }
       `}</style>
 
-      {/* 破棄確認ダイアログ */}
       <Modal
         opened={confirmOpened}
         onClose={() => setConfirmOpened(false)}
@@ -150,44 +136,11 @@ export function Pomodoro({
           ポモドーロタイマー
         </Title>
 
-        {/* プリセット選択ボタン */}
         <Group justify="center" gap="xs" mb="md">
-          <Button
-            size="xs"
-            radius="xl"
-            variant={workMinutes === 15 ? 'filled' : 'subtle'}
-            color={workMinutes === 15 ? 'indigo' : 'gray'}
-            onClick={() => changePreset(15, 3)}
-          >
-            15分 / 3分
-          </Button>
-          <Button
-            size="xs"
-            radius="xl"
-            variant={workMinutes === 25 ? 'filled' : 'subtle'}
-            color={workMinutes === 25 ? 'indigo' : 'gray'}
-            onClick={() => changePreset(25, 5)}
-          >
-            25分 / 5分
-          </Button>
-          <Button
-            size="xs"
-            radius="xl"
-            variant={workMinutes === 52 ? 'filled' : 'subtle'}
-            color={workMinutes === 52 ? 'indigo' : 'gray'}
-            onClick={() => changePreset(52, 17)}
-          >
-            52分 / 17分
-          </Button>
-          <Button
-            size="xs"
-            radius="xl"
-            variant={workMinutes === 90 ? 'filled' : 'subtle'}
-            color={workMinutes === 90 ? 'indigo' : 'gray'}
-            onClick={() => changePreset(90, 20)}
-          >
-            90分 / 20分
-          </Button>
+          <Button size="xs" radius="xl" variant={workMinutes === 15 ? 'filled' : 'subtle'} color={workMinutes === 15 ? 'indigo' : 'gray'} onClick={() => changePreset(15, 3)}>15分 / 3分</Button>
+          <Button size="xs" radius="xl" variant={workMinutes === 25 ? 'filled' : 'subtle'} color={workMinutes === 25 ? 'indigo' : 'gray'} onClick={() => changePreset(25, 5)}>25分 / 5分</Button>
+          <Button size="xs" radius="xl" variant={workMinutes === 52 ? 'filled' : 'subtle'} color={workMinutes === 52 ? 'indigo' : 'gray'} onClick={() => changePreset(52, 17)}>52分 / 17分</Button>
+          <Button size="xs" radius="xl" variant={workMinutes === 90 ? 'filled' : 'subtle'} color={workMinutes === 90 ? 'indigo' : 'gray'} onClick={() => changePreset(90, 20)}>90分 / 20分</Button>
         </Group>
 
         <SegmentedControl
@@ -208,7 +161,6 @@ export function Pomodoro({
           }}
         />
 
-        {/* サイクル設定エリア */}
         <Group justify="space-between" align="center" mb="md" style={{ backgroundColor: '#0f111a', padding: '8px 16px', borderRadius: '12px' }}>
           <Switch
             label="自動で次のモードをスタート"
@@ -233,7 +185,6 @@ export function Pomodoro({
           </Group>
         </Group>
 
-        {/* グラデーション円形タイマー（呼吸発光付き） */}
         <Center mb="lg">
           <div style={{ position: 'relative', width: circleSize, height: circleSize }}>
             <svg width={circleSize} height={circleSize} style={{ display: 'block' }}>
@@ -242,7 +193,6 @@ export function Pomodoro({
                   <stop offset="0%" stopColor="#6366f1" />
                   <stop offset="100%" stopColor="#a855f7" />
                 </linearGradient>
-
                 <linearGradient id="pomoBreakGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#10b981" />
                   <stop offset="100%" stopColor="#06b6d4" />
@@ -347,7 +297,6 @@ export function Pomodoro({
           </Button>
         </Group>
 
-        {/* デバッグ機能 */}
         {isDebugMode && (
           <Card padding="sm" ta="left" styles={{ root: { backgroundColor: '#0f111a', borderRadius: '16px', border: '1px dashed rgba(255, 255, 255, 0.08)' } }}>
             <Text size="xs" style={{ color: '#71788e' }} fw={700} mb="xs">🐞 デバッグスキップ</Text>

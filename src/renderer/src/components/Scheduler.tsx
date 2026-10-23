@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { 
   Card, Title, Button, Textarea, Stack, Text, Group, TextInput, 
-  ActionIcon, Switch, Progress 
+  ActionIcon, Switch, Progress, Modal 
 } from '@mantine/core'
 import { generateSchedule } from '../services/aiService'
 import { Task, AnnounceTemplates } from '../types'
@@ -10,7 +10,6 @@ import { useScheduleMonitor } from '../hooks/useScheduleMonitor'
 import { applyAutoBreaks } from '../utils/taskUtils'
 
 interface SchedulerProps {
-  apiKey: string
   ttsProvider: TtsProvider
   volume: number
   preNotifyMinutes: number
@@ -21,10 +20,12 @@ interface SchedulerProps {
   breakMinutes?: number
   isDebugMode?: boolean
   autoCompleteTask?: boolean
+  timeOffset: number
+  setTimeOffset: React.Dispatch<React.SetStateAction<number>>
+  virtualTimeStr: string
 }
 
 export function Scheduler({
-  apiKey,
   ttsProvider,
   volume,
   preNotifyMinutes,
@@ -34,35 +35,26 @@ export function Scheduler({
   autoBreakEnabled = true,
   breakMinutes = 5,
   isDebugMode = false,
-  autoCompleteTask = false
+  autoCompleteTask = false,
+  timeOffset,
+  setTimeOffset,
+  virtualTimeStr
 }: SchedulerProps) {
   const [prompt, setPrompt] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [timeOffset, setTimeOffset] = useState<number>(0)
-  const [virtualClockStr, setVirtualClockStr] = useState<string>('')
   const [isBaseTimeCustomized, setIsBaseTimeCustomized] = useState(false)
+  const [clearConfirmOpened, setClearConfirmOpened] = useState(false)
   const allCompletedNotifiedRef = useRef<boolean>(false)
+  const prevCompletedCountRef = useRef<number>(0)
   const [baseTime, setBaseTime] = useState('')
 
   useEffect(() => {
-    const updateClock = () => {
-      const vNow = new Date(Date.now() + timeOffset)
-      const h = vNow.getHours().toString().padStart(2, '0')
-      const m = vNow.getMinutes().toString().padStart(2, '0')
-      const s = vNow.getSeconds().toString().padStart(2, '0')
-      const currentHHMMSS = `${h}:${m}:${s}`
-      setVirtualClockStr(currentHHMMSS)
-
-      if (!isBaseTimeCustomized) {
-        setBaseTime(`${h}:${m}`)
-      }
+    if (!isBaseTimeCustomized && virtualTimeStr) {
+      setBaseTime(virtualTimeStr.substring(0, 5))
     }
-    updateClock()
-    const interval = setInterval(updateClock, 1000)
-    return () => clearInterval(interval)
-  }, [timeOffset, isBaseTimeCustomized])
+  }, [virtualTimeStr, isBaseTimeCustomized])
 
   const handleAutoTaskComplete = (id: string) => {
     setTasks((prev) =>
@@ -81,20 +73,32 @@ export function Scheduler({
     handleAutoTaskComplete
   )
 
+  // 全タスク完了通知の判定
+  // （手動削除によって未完了タスクが消えた場合は発火せず、実際にタスクの完了数が増加して全完了になったときのみ発声）
   useEffect(() => {
+    const completedCount = tasks.filter((t) => t.completed).length
+
     if (tasks.length === 0) {
       allCompletedNotifiedRef.current = false
+      prevCompletedCountRef.current = 0
       return
     }
 
     const isAllDone = tasks.every((t) => t.completed)
-    if (isAllDone && !allCompletedNotifiedRef.current) {
+
+    if (
+      isAllDone && 
+      completedCount > prevCompletedCountRef.current && 
+      !allCompletedNotifiedRef.current
+    ) {
       allCompletedNotifiedRef.current = true
       const text = templates.allCompleted || '本日のタスクがすべて終了しました。お疲れ様でした。'
       playNotification(text, ttsProvider, volume)
     } else if (!isAllDone) {
       allCompletedNotifiedRef.current = false
     }
+
+    prevCompletedCountRef.current = completedCount
   }, [tasks, ttsProvider, volume, templates])
 
   const addMinutesToBaseTime = (minutes: number) => {
@@ -112,16 +116,14 @@ export function Scheduler({
     setLoading(true)
     setError(null)
 
-    const vNow = new Date(Date.now() + timeOffset)
-    const curH = vNow.getHours().toString().padStart(2, '0')
-    const curM = vNow.getMinutes().toString().padStart(2, '0')
-    const effectiveBaseTime = isBaseTimeCustomized ? baseTime : `${curH}:${curM}`
+    const effectiveBaseTime = isBaseTimeCustomized ? baseTime : virtualTimeStr.substring(0, 5)
 
     try {
-      const generated = await generateSchedule(prompt, apiKey, effectiveBaseTime)
+      const generated = await generateSchedule(prompt, effectiveBaseTime)
       const withBreaks = applyAutoBreaks(generated, autoBreakEnabled, breakMinutes)
       setTasks(withBreaks)
       allCompletedNotifiedRef.current = false
+      prevCompletedCountRef.current = 0
       setIsBaseTimeCustomized(false)
     } catch (err: any) {
       setError(err.message || 'スケジュールの生成に失敗しました。')
@@ -131,10 +133,7 @@ export function Scheduler({
   }
 
   const handleSetTestSchedule = () => {
-    const vNow = new Date(Date.now() + timeOffset)
-    const curH = vNow.getHours().toString().padStart(2, '0')
-    const curM = vNow.getMinutes().toString().padStart(2, '0')
-    const startHHMM = `${curH}:${curM}`
+    const startHHMM = virtualTimeStr.substring(0, 5)
 
     const addMins = (hhmm: string, mins: number) => {
       const [h, m] = hhmm.split(':').map(Number)
@@ -170,6 +169,7 @@ export function Scheduler({
     const withBreaks = applyAutoBreaks(rawTestTasks, autoBreakEnabled, breakMinutes)
     setTasks(withBreaks)
     allCompletedNotifiedRef.current = false
+    prevCompletedCountRef.current = 0
     setIsBaseTimeCustomized(false)
   }
 
@@ -221,9 +221,15 @@ export function Scheduler({
     }
   }
 
+  // 小休憩・個別タスクの削除（自動再生成を走らせず、選択した枠のみを純粋に削除）
   const handleDeleteTask = (id: string) => {
-    const updated = tasks.filter((t) => t.id !== id)
-    setTasks(applyAutoBreaks(updated, autoBreakEnabled, breakMinutes))
+    setTasks((prev) => prev.filter((t) => t.id !== id))
+  }
+
+  // タスクの一括全削除
+  const handleClearAllTasks = () => {
+    setTasks([])
+    setClearConfirmOpened(false)
   }
 
   const handleToggleTask = (id: string) => {
@@ -232,7 +238,7 @@ export function Scheduler({
     )
   }
 
-  const nowHHMM = virtualClockStr ? virtualClockStr.substring(0, 5) : ''
+  const nowHHMM = virtualTimeStr ? virtualTimeStr.substring(0, 5) : ''
 
   const getTaskProgress = (task: Task): number => {
     if (!task.startTime || !task.endTime) return 0
@@ -253,7 +259,6 @@ export function Scheduler({
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
-      {/* 実行中タスクの枠線点滅（呼吸）アニメーション定義 */}
       <style>{`
         @keyframes task-border-pulse {
           0% { border-color: rgba(99, 102, 241, 0.3); box-shadow: 0 0 8px rgba(99, 102, 241, 0.1); }
@@ -262,13 +267,42 @@ export function Scheduler({
         }
       `}</style>
 
+      {/* タスク全削除の確認モーダル */}
+      <Modal
+        opened={clearConfirmOpened}
+        onClose={() => setClearConfirmOpened(false)}
+        title="タスクの全削除"
+        centered
+        styles={{
+          title: { color: 'white', fontWeight: 700 },
+          content: { backgroundColor: '#151828', color: 'white' },
+          header: { backgroundColor: '#151828' }
+        }}
+      >
+        <Text size="sm" mb="lg" c="#c1c7d8">
+          登録されているすべてのタスクを削除しますか？<br />
+          この操作は取り消せません。
+        </Text>
+        <Group justify="flex-end">
+          <Button
+            variant="default"
+            onClick={() => setClearConfirmOpened(false)}
+            styles={{ root: { backgroundColor: '#21253a', color: 'white', border: 'none' } }}
+          >
+            キャンセル
+          </Button>
+          <Button color="red" onClick={handleClearAllTasks}>
+            削除する
+          </Button>
+        </Group>
+      </Modal>
+
       {/* 左パネル: APP CLOCK, GENERATOR, デバッグスキップ */}
       <Stack gap="md" style={{ overflowY: 'auto' }}>
-        {/* 1. APP CLOCK */}
         <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
           <Text size="10px" fw={700} c="#828a9e" style={{ letterSpacing: '0.05em' }}>APP CLOCK</Text>
           <Text fw={900} style={{ fontSize: '36px', color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }} my="xs">
-            {virtualClockStr || '00:00:00'}
+            {virtualTimeStr || '00:00:00'}
           </Text>
 
           <Group justify="space-between" align="center" mb="xs">
@@ -293,7 +327,6 @@ export function Scheduler({
           </Group>
         </Card>
 
-        {/* 2. GENERATOR */}
         <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
           <Text size="10px" fw={700} c="#828a9e" style={{ letterSpacing: '0.05em' }}>GENERATOR</Text>
           <Title order={5} c="white" fw={800} mb="xs">タスク生成</Title>
@@ -334,7 +367,6 @@ export function Scheduler({
           </Button>
         </Card>
 
-        {/* 3. デバッグスキップ */}
         {isDebugMode && (
           <Card padding="md" styles={{ root: { backgroundColor: '#151828', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' } }}>
             <Text size="xs" fw={700} c="#c1c7d8" mb="xs">🐞 デバッグスキップ</Text>
@@ -368,7 +400,21 @@ export function Scheduler({
       {/* 右パネル: TIMELINE タイムスケジュール */}
       <Card padding="lg" styles={{ root: { backgroundColor: '#151828', borderRadius: '18px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', minHeight: 0 } }}>
         <Text size="10px" fw={700} c="#828a9e" style={{ letterSpacing: '0.05em' }}>TIMELINE</Text>
-        <Title order={4} c="white" mb="md" fw={800}>タイムスケジュール</Title>
+        
+        <Group justify="space-between" align="center" mb="md">
+          <Title order={4} c="white" fw={800}>タイムスケジュール</Title>
+          {tasks.length > 0 && (
+            <Button
+              size="xs"
+              variant="subtle"
+              color="red"
+              onClick={() => setClearConfirmOpened(true)}
+              styles={{ root: { height: '26px', padding: '0 8px', fontSize: '11px', fontWeight: 700 } }}
+            >
+              🗑️ 全タスク削除
+            </Button>
+          )}
+        </Group>
 
         <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
           <Stack gap="xs">
@@ -395,7 +441,6 @@ export function Scheduler({
                         border: '1px solid rgba(255, 255, 255, 0.05)',
                         opacity: task.completed ? 0.38 : 1,
                         transition: 'all 0.25s ease',
-                        // 実行中タスクは枠線を淡く呼吸点滅させる
                         animation: isActive ? 'task-border-pulse 2.5s infinite ease-in-out' : 'none'
                       }
                     }}
@@ -424,7 +469,6 @@ export function Scheduler({
                       </ActionIcon>
                     </Group>
 
-                    {/* 実行中タスクのリアルタイム進行度バー */}
                     {isActive && (
                       <Progress 
                         value={progress} 

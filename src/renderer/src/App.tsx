@@ -51,7 +51,6 @@ const validGoogleVoices = ['ja-JP-Neural2-B', 'ja-JP-Neural2-C']
 export function App() {
   const [activeTab, setActiveTab] = useState<TabType>('scheduler')
 
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('ht_api_key') || '')
   const [googleTtsApiKey, setGoogleTtsApiKey] = useState<string>(() => localStorage.getItem('ht_google_tts_api_key') || '')
   
   const [ttsProvider, setTtsProvider] = useState<TtsProvider>(() => {
@@ -138,19 +137,22 @@ export function App() {
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(false)
   const [isCompactMode, setIsCompactMode] = useState<boolean>(false)
   const [virtualTimeStr, setVirtualTimeStr] = useState<string>('')
+  
+  // ★ APP CLOCK (スケジューラのスキップ時間) を親で一元管理
+  const [timeOffset, setTimeOffset] = useState<number>(0)
 
+  // 仮想時刻の計算 (timeOffsetを反映)
   useEffect(() => {
     const interval = setInterval(() => {
-      const now = new Date()
+      const now = new Date(Date.now() + timeOffset)
       const h = now.getHours().toString().padStart(2, '0')
       const m = now.getMinutes().toString().padStart(2, '0')
       const s = now.getSeconds().toString().padStart(2, '0')
       setVirtualTimeStr(`${h}:${m}:${s}`)
     }, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [timeOffset])
 
-  useEffect(() => { localStorage.setItem('ht_api_key', apiKey) }, [apiKey])
   useEffect(() => { localStorage.setItem('ht_google_tts_api_key', googleTtsApiKey) }, [googleTtsApiKey])
   useEffect(() => { localStorage.setItem('ht_google_voice_name', googleVoiceName) }, [googleVoiceName])
   useEffect(() => { localStorage.setItem('ht_google_pitch', googlePitch.toString()) }, [googlePitch])
@@ -189,7 +191,8 @@ export function App() {
   const isZundamon = ttsProvider === 'voicevox_3'
   const activeTemplates = isZundamon ? zundamonTemplates : standardTemplates
 
-  const pomodoro = usePomodoro(ttsProvider, volume, preNotifyMinutes, activeTemplates, {
+  // ★ ポモドーロのタイマー状態を親で1つだけ生成・管理する
+  const pomodoroState = usePomodoro(ttsProvider, volume, preNotifyMinutes, activeTemplates, {
     autoCycleEnabled: pomodoroAutoCycle,
     targetCycles: pomodoroTargetCycles
   })
@@ -209,7 +212,6 @@ export function App() {
     }
   }
 
-  // コンパクトモード切替時、勝手に最前面にする処理を削除
   const handleToggleCompactMode = (enable: boolean): void => {
     setIsCompactMode(enable)
     if (typeof window !== 'undefined' && window.api && window.api.resizeWindow) {
@@ -223,23 +225,30 @@ export function App() {
 
   return (
     <MantineProvider theme={customTheme} forceColorScheme="dark">
-      {isCompactMode ? (
-        <div style={{ width: '100vw', height: '100vh', backgroundColor: '#0f111a', boxSizing: 'border-box' }}>
-          <MiniTimer
-            activeTab={activeTab === 'settings' ? 'scheduler' : activeTab}
-            onChangeTab={(tab) => setActiveTab(tab)}
-            pomodoroTitle={pomodoro.mode === 'work' ? '🔥 ポモドーロ作業' : '☕ ポモドーロ休憩'}
-            pomodoroTimeString={`${pomodoro.minutes}:${pomodoro.seconds}`}
-            isPomodoroRunning={pomodoro.isRunning}
-            onTogglePomodoro={pomodoro.toggleTimer}
-            currentTaskTitle={currentTaskTitle}
-            virtualTimeStr={virtualTimeStr}
-            isAlwaysOnTop={isAlwaysOnTop}
-            onToggleAlwaysOnTop={handleToggleAlwaysOnTop}
-            onRestoreNormalMode={() => handleToggleCompactMode(false)}
-          />
-        </div>
-      ) : (
+      {/* 
+        ★ コンポーネント破棄を防ぐため、display: none で画面を切り替える 
+        これにより、裏側に回った状態のポモドーロやスケジューラーの時間が完全に維持される
+      */}
+      
+      {/* --- ミニタイマーモード画面 --- */}
+      <div style={{ display: isCompactMode ? 'block' : 'none', width: '100vw', height: '100vh', backgroundColor: '#0f111a', boxSizing: 'border-box' }}>
+        <MiniTimer
+          activeTab={activeTab === 'settings' ? 'scheduler' : activeTab}
+          onChangeTab={(tab) => setActiveTab(tab)}
+          pomodoroTitle={pomodoroState.mode === 'work' ? '🔥 ポモドーロ作業' : '☕ ポモドーロ休憩'}
+          pomodoroTimeString={`${pomodoroState.minutes}:${pomodoroState.seconds}`}
+          isPomodoroRunning={pomodoroState.isRunning}
+          onTogglePomodoro={pomodoroState.toggleTimer}
+          currentTaskTitle={currentTaskTitle}
+          virtualTimeStr={virtualTimeStr}
+          isAlwaysOnTop={isAlwaysOnTop}
+          onToggleAlwaysOnTop={handleToggleAlwaysOnTop}
+          onRestoreNormalMode={() => handleToggleCompactMode(false)}
+        />
+      </div>
+      
+      {/* --- 通常モード画面 --- */}
+      <div style={{ display: !isCompactMode ? 'block' : 'none' }}>
         <AppShell 
           header={{ height: 68 }} 
           padding="0"
@@ -280,7 +289,6 @@ export function App() {
             <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: activeTab === 'scheduler' ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column' }}>
                 <Scheduler 
-                  apiKey={apiKey} 
                   ttsProvider={ttsProvider} 
                   volume={volume} 
                   preNotifyMinutes={preNotifyMinutes} 
@@ -291,20 +299,16 @@ export function App() {
                   breakMinutes={breakMinutes}
                   isDebugMode={isDebugMode}
                   autoCompleteTask={autoCompleteTask}
+                  timeOffset={timeOffset}           // ★ 親から仮想時刻のズレを渡す
+                  setTimeOffset={setTimeOffset}     // ★ 親へデバッグスキップを反映させる
+                  virtualTimeStr={virtualTimeStr}   // ★ 親で計算された仮想時刻を使用する
                 />
               </div>
               
               <div style={{ display: activeTab === 'pomodoro' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
                 <Pomodoro 
-                  ttsProvider={ttsProvider} 
-                  volume={volume} 
-                  preNotifyMinutes={preNotifyMinutes} 
-                  templates={activeTemplates} 
+                  pomodoroState={pomodoroState}     // ★ 親で管理しているタイマー状態を渡す
                   isDebugMode={isDebugMode}
-                  autoCycleEnabled={pomodoroAutoCycle}
-                  setAutoCycleEnabled={setPomodoroAutoCycle}
-                  targetCycles={pomodoroTargetCycles}
-                  setTargetCycles={setPomodoroTargetCycles}
                   tasks={tasks}
                   setTasks={setTasks}
                 />
@@ -312,7 +316,6 @@ export function App() {
               
               <div style={{ display: activeTab === 'settings' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
                 <Settings 
-                  apiKey={apiKey} setApiKey={setApiKey}
                   googleTtsApiKey={googleTtsApiKey} setGoogleTtsApiKey={setGoogleTtsApiKey}
                   googleVoiceName={googleVoiceName} setGoogleVoiceName={setGoogleVoiceName}
                   googlePitch={googlePitch} setGooglePitch={setGooglePitch}
@@ -335,7 +338,7 @@ export function App() {
             </div>
           </AppShell.Main>
         </AppShell>
-      )}
+      </div>
     </MantineProvider>
   )
 }
